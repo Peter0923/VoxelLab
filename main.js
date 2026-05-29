@@ -72,22 +72,59 @@ const inputManager = new InputManager();
 // --- Character Physics & Animation ---
 const characterController = new CharacterController(lego, worldMap, inputManager, controllerGUI);
 
-// --- Wire up Save button in GUI ---
-controllerGUI.setupSaveButton(() => {
-  SceneArchive.save(cubeManager, characterController, lego);
-});
+// --- Wire up Scene Manager in GUI ---
+controllerGUI.setupSceneManager(cubeManager, characterController, lego, GROUND_SIZE);
 
-// --- Auto-load saved scene or create initial cubes ---
-SceneArchive.load(cubeManager, characterController, lego).then((loaded) => {
-  if (!loaded) {
-    // No saved scene — place the default 4 cubes at the corners
-    const half = GROUND_SIZE / 2 - 0.5;
-    cubeManager.addCube( half, 0.5,  half);
-    cubeManager.addCube( half, 0.5, -half);
-    cubeManager.addCube(-half, 0.5, -half);
-    cubeManager.addCube(-half, 0.5,  half);
+// --- Auto-load last scene, fallback to myworld, or prompt to create ---
+(async () => {
+  // Check for last loaded scene
+  let lastScene = SceneArchive.getLastScene();
+
+  let loadedSceneName = null;
+
+  if (lastScene) {
+    const loaded = await SceneArchive.load(lastScene, cubeManager, characterController, lego);
+    if (loaded) {
+      loadedSceneName = lastScene;
+    }
   }
-});
+
+  if (!loadedSceneName) {
+    // Try loading the default myworld.scene
+    const myworldLoaded = await SceneArchive.load('myworld', cubeManager, characterController, lego);
+    if (myworldLoaded) {
+      loadedSceneName = 'myworld';
+    }
+  }
+
+  if (!loadedSceneName) {
+    // No scenes exist — set character at center and prompt user
+    lego.group.position.set(0, 0, 0);
+    lego.group.rotation.y = 0;
+
+    // Check if there are any scenes available before prompting
+    const scenes = await SceneArchive.list();
+    if (scenes.length === 0) {
+      const name = window.prompt('No scenes found. Please enter a name for your first scene:');
+      if (name && name.trim() && /^[\w-]+$/.test(name.trim())) {
+        const trimmed = name.trim();
+        // Create default scene with corner cubes and character at center
+        const ok = await SceneArchive.createDefault(trimmed, cubeManager, characterController, lego, GROUND_SIZE);
+        if (ok) {
+          loadedSceneName = trimmed;
+        }
+      }
+    }
+  }
+
+  // Sync the GUI scene dropdown with whatever was loaded
+  if (loadedSceneName) {
+    await controllerGUI.syncCurrentScene(loadedSceneName);
+  } else {
+    // No scene was loaded or created — refresh the dropdown so user can see available scenes
+    await controllerGUI.syncCurrentScene('');
+  }
+})();
 
 // --- Pointer Interaction (place / remove cubes) ---
 new InteractionManager(

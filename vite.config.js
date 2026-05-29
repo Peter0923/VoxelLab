@@ -3,54 +3,75 @@ import fs from 'fs';
 import path from 'path';
 
 const SCENES_DIR = path.resolve('public', 'scenes');
-const SCENE_FILE = path.join(SCENES_DIR, 'myworld.scene');
 
 export default defineConfig({
   plugins: [
     {
       name: 'scene-api',
       configureServer(server) {
-        // Save scene
-        server.middlewares.use('/api/save', (req, res) => {
-          if (req.method !== 'POST') {
-            res.statusCode = 405;
-            res.end('Method Not Allowed');
-            return;
-          }
+        server.middlewares.use((req, res, next) => {
+          const url = req.url;
 
-          let body = '';
-          req.on('data', (chunk) => { body += chunk; });
-          req.on('end', () => {
+          // --- List all scenes (GET /api/scenes) ---
+          if (url === '/api/scenes' && req.method === 'GET') {
+            res.setHeader('Content-Type', 'application/json');
+
             if (!fs.existsSync(SCENES_DIR)) {
-              fs.mkdirSync(SCENES_DIR, { recursive: true });
+              res.end(JSON.stringify([]));
+              return;
             }
-            fs.writeFileSync(SCENE_FILE, body, 'utf-8');
+
+            const files = fs.readdirSync(SCENES_DIR)
+              .filter(f => f.endsWith('.scene'))
+              .map(f => f.slice(0, -6)); // remove '.scene' suffix
 
             res.statusCode = 200;
+            res.end(JSON.stringify(files));
+            return;
+          }
+
+          // --- Save scene (POST /api/save/:name) ---
+          let match;
+          if ((match = url.match(/^\/api\/save\/([\w-]+)$/)) && req.method === 'POST') {
+            const name = match[1];
+
+            let body = '';
+            req.on('data', (chunk) => { body += chunk; });
+            req.on('end', () => {
+              if (!fs.existsSync(SCENES_DIR)) {
+                fs.mkdirSync(SCENES_DIR, { recursive: true });
+              }
+              const filePath = path.join(SCENES_DIR, `${name}.scene`);
+              fs.writeFileSync(filePath, body, 'utf-8');
+
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ ok: true }));
+            });
+            return;
+          }
+
+          // --- Load scene (GET /api/load/:name) ---
+          if ((match = url.match(/^\/api\/load\/([\w-]+)$/)) && req.method === 'GET') {
+            const name = match[1];
+            const filePath = path.join(SCENES_DIR, `${name}.scene`);
+
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ ok: true }));
-          });
-        });
 
-        // Load scene
-        server.middlewares.use('/api/load', (req, res) => {
-          res.setHeader('Content-Type', 'application/json');
+            if (!fs.existsSync(filePath)) {
+              res.statusCode = 404;
+              res.end(JSON.stringify({ error: 'Scene not found' }));
+              return;
+            }
 
-          if (req.method !== 'GET') {
-            res.statusCode = 405;
-            res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+            const content = fs.readFileSync(filePath, 'utf-8');
+            res.statusCode = 200;
+            res.end(content);
             return;
           }
 
-          if (!fs.existsSync(SCENE_FILE)) {
-            res.statusCode = 404;
-            res.end(JSON.stringify({ error: 'No saved scene' }));
-            return;
-          }
-
-          const content = fs.readFileSync(SCENE_FILE, 'utf-8');
-          res.statusCode = 200;
-          res.end(content);
+          // Not an API route — pass through to Vite
+          next();
         });
       },
     },

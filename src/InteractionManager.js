@@ -1,6 +1,7 @@
 import { VoxelRaycaster } from './VoxelRaycaster.js';
 
 const GROUND_SIZE = 50;
+const MAX_RAY_DISTANCE = 80;
 
 export class InteractionManager {
   /**
@@ -19,14 +20,24 @@ export class InteractionManager {
     this._ctrlGUI = controllerGUI;
     this._lego = legoCharacter;
     this._pointerMoved = false;
+    this._downPos = { x: 0, y: 0 };
+    this._deadzone = 3; // px — prevent orbit micro-movements from canceling clicks
 
     this._onPointerDown = (e) => {
       if (e.button === 0 || e.button === 2) {
         this._pointerMoved = false;
+        this._downPos.x = e.clientX;
+        this._downPos.y = e.clientY;
       }
     };
 
-    this._onPointerMove = () => { this._pointerMoved = true; };
+    this._onPointerMove = (e) => {
+      const dx = e.clientX - this._downPos.x;
+      const dy = e.clientY - this._downPos.y;
+      if (dx * dx + dy * dy > this._deadzone * this._deadzone) {
+        this._pointerMoved = true;
+      }
+    };
 
     this._onPointerUp = (e) => {
       if (e.button !== 0 && e.button !== 2) return;
@@ -41,9 +52,9 @@ export class InteractionManager {
         ? VoxelRaycaster.centerRay(this._camera)
         : VoxelRaycaster.screenToRay(e.clientX, e.clientY, this._camera, this._dom);
 
-      const hit = VoxelRaycaster.raycast(origin, direction, this._worldMap, 30);
+      const hit = VoxelRaycaster.raycast(origin, direction, this._worldMap, MAX_RAY_DISTANCE);
 
-      if (e.button === 2) {
+      if (e.button === 2 || (e.button === 0 && e.ctrlKey)) {
         if (hit) {
           this._cubeMgr.removeCubeAt(hit.cubeX, hit.cubeY, hit.cubeZ);
         }
@@ -59,7 +70,7 @@ export class InteractionManager {
       }
 
       // No cube hit — try ground
-      const cell = VoxelRaycaster.pickGround(origin, direction, GROUND_SIZE, 50);
+      const cell = VoxelRaycaster.pickGround(origin, direction, GROUND_SIZE, MAX_RAY_DISTANCE);
       if (cell && !this._isCharacterAt(cell.x, 0.5, cell.z)) {
         this._cubeMgr.addCube(cell.x, 0.5, cell.z);
       }
