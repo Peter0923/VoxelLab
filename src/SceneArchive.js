@@ -5,8 +5,9 @@
  * {
  *   version: 1,
  *   savedAt: "ISO date string",
- *   player: { position: { x, y, z }, rotationY: number },
- *   cubes: [ { position: { x, y, z }, color: [r, g, b] }, ... ]
+ *   numCubes: number,
+ *   player: { posX, posY, posZ, rotationX, rotationY, rotationZ },
+ *   cubes: [ [posX, posY, posZ, r, g, b], ... ]
  * }
  *
  * Each scene is stored as {name}.scene in the public/scenes/ directory.
@@ -32,6 +33,15 @@ export class SceneArchive {
   }
 
   /**
+   * Round a number to at most 2 decimal places.
+   * @param {number} v
+   * @returns {number}
+   */
+  static _round2(v) {
+    return Math.round(v * 100) / 100;
+  }
+
+  /**
    * Serialize the current scene state into a plain object.
    * @param {import('./CubeManager.js').CubeManager} cubeManager
    * @param {import('./CharacterController.js').CharacterController} characterController
@@ -40,20 +50,40 @@ export class SceneArchive {
    */
   static serialize(cubeManager, characterController, legoCharacter) {
     const pos = legoCharacter.group.position;
-    const rotY = legoCharacter.group.rotation.y;
+    const rot = legoCharacter.group.rotation;
+
+    // Date in China timezone (UTC+8), second precision
+    const now = new Date();
+    const chinaOffset = 8 * 60; // minutes ahead of UTC
+    const chinaTime = new Date(now.getTime() + chinaOffset * 60 * 1000);
+    const savedAt = chinaTime.toISOString().replace(/\.\d{3}Z/, '+08:00');
 
     const cubes = [];
     for (let i = 0; i < cubeManager.count; i++) {
       const data = cubeManager.getCubeData(i);
-      if (data) cubes.push(data);
+      if (data) {
+        cubes.push([
+          SceneArchive._round2(data.position.x),
+          SceneArchive._round2(data.position.y),
+          SceneArchive._round2(data.position.z),
+          SceneArchive._round2(data.color[0]),
+          SceneArchive._round2(data.color[1]),
+          SceneArchive._round2(data.color[2]),
+        ]);
+      }
     }
 
     return {
       version: 1,
-      savedAt: new Date().toISOString(),
+      savedAt,
+      numCubes: cubes.length,
       player: {
-        position: { x: pos.x, y: pos.y, z: pos.z },
-        rotationY: rotY,
+        posX: SceneArchive._round2(pos.x),
+        posY: SceneArchive._round2(pos.y),
+        posZ: SceneArchive._round2(pos.z),
+        rotationX: SceneArchive._round2(rot.x),
+        rotationY: SceneArchive._round2(rot.y),
+        rotationZ: SceneArchive._round2(rot.z),
       },
       cubes,
     };
@@ -104,11 +134,15 @@ export class SceneArchive {
       // Restore character
       if (data.player) {
         legoCharacter.group.position.set(
-          data.player.position.x,
-          data.player.position.y,
-          data.player.position.z
+          data.player.posX,
+          data.player.posY,
+          data.player.posZ
         );
-        legoCharacter.group.rotation.y = data.player.rotationY;
+        legoCharacter.group.rotation.set(
+          data.player.rotationX || 0,
+          data.player.rotationY,
+          data.player.rotationZ || 0
+        );
       }
 
       // Restore cubes
@@ -116,12 +150,8 @@ export class SceneArchive {
         cubeManager.beginBulkLoad();
         for (const cube of data.cubes) {
           cubeManager.addCubeWithColor(
-            cube.position.x,
-            cube.position.y,
-            cube.position.z,
-            cube.color[0],
-            cube.color[1],
-            cube.color[2]
+            cube[0], cube[1], cube[2],
+            cube[3], cube[4], cube[5]
           );
         }
         cubeManager.endBulkLoad();
