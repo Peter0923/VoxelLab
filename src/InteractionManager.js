@@ -1,4 +1,5 @@
 import { VoxelRaycaster } from './VoxelRaycaster.js';
+import { CharacterController } from './CharacterController.js';
 
 const GROUND_SIZE = 50;
 const MAX_RAY_DISTANCE = 80;
@@ -42,6 +43,9 @@ export class InteractionManager {
     this._onPointerUp = (e) => {
       if (e.button !== 0 && e.button !== 2) return;
       if (this._pointerMoved) return;
+
+      // In Follow mode there is no visible crosshair — disable cube placement/removal
+      if (this._ctrlGUI.currentName === 'Follow') return;
 
       // In pointer-lock modes (FPS, Follow), skip if pointer isn't locked yet (the click is locking it)
       if (this._isPointerLock() && document.pointerLockElement !== this._dom) return;
@@ -90,9 +94,7 @@ export class InteractionManager {
 
   _isCharacterAt(worldX, worldY, worldZ) {
     const pos = this._lego.group.position;
-    const CHAR_HALF_X = 0.3;
-    const CHAR_HALF_Z = 0.3;
-    const CHAR_HEIGHT = 1.9;
+    const { CHAR_HALF_X, CHAR_HALF_Z, CHAR_HEIGHT } = CharacterController;
 
     const cx = Math.floor(worldX);
     const cz = Math.floor(worldZ);
