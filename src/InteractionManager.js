@@ -12,14 +12,16 @@ export class InteractionManager {
    * @param {import('./WorldMap.js').WorldMap} worldMap
    * @param {import('./ControllerGUI.js').ControllerGUI} controllerGUI
    * @param {import('../LegoCharacter.js').LegoCharacter} legoCharacter
+   * @param {import('./ColorPicker.js').ColorPicker} [colorPicker]
    */
-  constructor(domElement, camera, cubeManager, worldMap, controllerGUI, legoCharacter) {
+  constructor(domElement, camera, cubeManager, worldMap, controllerGUI, legoCharacter, colorPicker) {
     this._dom = domElement;
     this._camera = camera;
     this._cubeMgr = cubeManager;
     this._worldMap = worldMap;
     this._ctrlGUI = controllerGUI;
     this._lego = legoCharacter;
+    this._colorPicker = colorPicker;
     this._pointerMoved = false;
     this._downPos = { x: 0, y: 0 };
     this._deadzone = 3; // px — prevent orbit micro-movements from canceling clicks
@@ -68,7 +70,7 @@ export class InteractionManager {
       // Left button — place cube
       if (hit) {
         if (!this._isCharacterAt(hit.placeX, hit.placeY, hit.placeZ)) {
-          this._cubeMgr.addCube(hit.placeX, hit.placeY, hit.placeZ);
+          this._placeCube(hit.placeX, hit.placeY, hit.placeZ);
         }
         return;
       }
@@ -76,7 +78,7 @@ export class InteractionManager {
       // No cube hit — try ground
       const cell = VoxelRaycaster.pickGround(origin, direction, GROUND_SIZE, MAX_RAY_DISTANCE);
       if (cell && !this._isCharacterAt(cell.x, 0.5, cell.z)) {
-        this._cubeMgr.addCube(cell.x, 0.5, cell.z);
+        this._placeCube(cell.x, 0.5, cell.z);
       }
     };
 
@@ -86,6 +88,19 @@ export class InteractionManager {
     domElement.addEventListener('pointermove', this._onPointerMove);
     domElement.addEventListener('pointerup', this._onPointerUp);
     domElement.addEventListener('contextmenu', this._onContextMenu);
+  }
+
+  /**
+   * Place a cube at (x, y, z). Uses the color picker's selected color if set,
+   * otherwise falls back to random color.
+   */
+  _placeCube(x, y, z) {
+    const color = this._colorPicker ? this._colorPicker.getSelectedColor() : null;
+    if (color) {
+      this._cubeMgr.addCubeWithColor(x, y, z, color.r, color.g, color.b);
+    } else {
+      this._cubeMgr.addCube(x, y, z);
+    }
   }
 
   _isPointerLock() {

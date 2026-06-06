@@ -9,6 +9,7 @@ import { InputManager } from './src/InputManager.js';
 import { CharacterController } from './src/CharacterController.js';
 import { InteractionManager } from './src/InteractionManager.js';
 import { SceneArchive } from './src/SceneArchive.js';
+import { ColorPicker } from './src/ColorPicker.js';
 
 // --- Scene, Camera, Renderer ---
 const scene = new THREE.Scene();
@@ -78,8 +79,11 @@ const inputManager = new InputManager();
 const characterController = new CharacterController(lego, worldMap, inputManager, controllerGUI);
 
 // --- Wire up GUI sections (order matters — Scene Manager first, Camera Controller second) ---
+// --- Color Picker ---
+const colorPicker = new ColorPicker(renderer.domElement);
+
 controllerGUI.setupSceneManager(cubeManager, characterController, lego, GROUND_SIZE);
-controllerGUI.setupCameraController(lego, scene);
+controllerGUI.setupCameraController(lego, scene, colorPicker);
 
 // --- Auto-load last scene, fallback to myworld, or prompt to create ---
 (async () => {
@@ -140,7 +144,7 @@ controllerGUI.setupCameraController(lego, scene);
 // --- Pointer Interaction (place / remove cubes) ---
 new InteractionManager(
   renderer.domElement, camera, cubeManager,
-  worldMap, controllerGUI, lego
+  worldMap, controllerGUI, lego, colorPicker
 );
 
 // --- Stats ---

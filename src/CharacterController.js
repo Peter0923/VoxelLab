@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 export class CharacterController {
-  static CHAR_HALF_X = 0.6;
+  static CHAR_HALF_X = 0.4;
   static CHAR_HALF_Z = 0.4;
   static CHAR_HEIGHT = 2.0;
   static MOVE_SPEED = 2.5;

@@ -200,8 +200,9 @@ export class ControllerGUI {
    * to appear first in the panel.
    * @param {import('./LegoCharacter.js').LegoCharacter} character
    * @param {import('three').Scene} scene
+   * @param {import('./ColorPicker.js').ColorPicker} [colorPicker]
    */
-  setupCameraController(character, scene) {
+  setupCameraController(character, scene, colorPicker) {
     const folder = this.gui.addFolder('Camera Controller');
 
     // Controller dropdown
@@ -211,10 +212,21 @@ export class ControllerGUI {
       .name('Controller')
       .onChange((name) => this._switchTo(name));
 
-    // Bounding box toggle
-    if (character && scene) {
-      this._setupBoundingBoxToggle(character, scene, folder);
+    // Color Picker toggle
+    if (colorPicker) {
+      const pickerState = { enabled: false };
+      folder.add(pickerState, 'enabled')
+        .name('Color Picker')
+        .onChange((val) => {
+          if (val) colorPicker.show();
+          else colorPicker.hide();
+        });
     }
+
+    // Bounding box toggle
+    // if (character && scene) {
+    //   this._setupBoundingBoxToggle(character, scene, folder);
+    // }
   }
 
   /**
