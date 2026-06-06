@@ -59,6 +59,11 @@ spotLight.target.position.set(0, 0, -1);
 camera.add(spotLight);
 scene.add(camera);
 
+// --- Axes helper ---
+// const axesHelper = new THREE.AxesHelper( 5 );
+// axesHelper.position.set(0, 1, 0);
+// scene.add( axesHelper );
+
 // --- Cube System ---
 const chunkManager = new ChunkManager();
 chunkManager.attachToScene(scene);
@@ -72,8 +77,9 @@ const inputManager = new InputManager();
 // --- Character Physics & Animation ---
 const characterController = new CharacterController(lego, worldMap, inputManager, controllerGUI);
 
-// --- Wire up Scene Manager in GUI ---
+// --- Wire up GUI sections (order matters — Scene Manager first, Camera Controller second) ---
 controllerGUI.setupSceneManager(cubeManager, characterController, lego, GROUND_SIZE);
+controllerGUI.setupCameraController(lego, scene);
 
 // --- Auto-load last scene, fallback to myworld, or prompt to create ---
 (async () => {
@@ -123,6 +129,11 @@ controllerGUI.setupSceneManager(cubeManager, characterController, lego, GROUND_S
   } else {
     // No scene was loaded or created — refresh the dropdown so user can see available scenes
     await controllerGUI.syncCurrentScene('');
+  }
+
+  // If Orbit is the active controller, snap its camera to the character's final position
+  if (controllerGUI.currentName === 'Orbit') {
+    controllerGUI.controllers['Orbit'].rebaseOnCharacter(lego);
   }
 })();
 

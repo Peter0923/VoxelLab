@@ -34,16 +34,21 @@ export class OrbitController extends CameraController {
     this._onBlur = this._onBlur.bind(this);
   }
 
-  enable(camera, domElement) {
-    super.enable(camera, domElement);
+  enable(camera, domElement, character) {
+    super.enable(camera, domElement, character);
 
-    camera.position.set(0, 5, 30); //should be configurable
-    this._center.set(0, 0, 0);
-    camera.lookAt(this._center);
+    if (character) {
+      this.rebaseOnCharacter(character);
+    } else {
+      // No character — use default position immediately
+      camera.position.set(0, 5, 30);
+      this._center.set(0, 0, 0);
+      camera.lookAt(this._center);
 
-    const offset = camera.position.clone().sub(this._center);
-    this._spherical.setFromVector3(offset);
-    this._targetSpherical.copy(this._spherical);
+      const offset = camera.position.clone().sub(this._center);
+      this._spherical.setFromVector3(offset);
+      this._targetSpherical.copy(this._spherical);
+    }
 
     domElement.addEventListener('pointerdown', this._onPointerDown);
     domElement.addEventListener('pointermove', this._onPointerMove);
@@ -138,6 +143,32 @@ export class OrbitController extends CameraController {
 
   _onContextMenu(e) {
     e.preventDefault();
+  }
+
+  /**
+   * Reposition the camera to center on the given character.
+   * The camera is placed in front of the character (horizontal distance 50, vertical distance 10)
+   * and looks at the character. Spherical coordinates are reset to match.
+   * @param {object} character - the LegoCharacter instance
+   */
+  rebaseOnCharacter(character) {
+    if (!this.camera || !character) return;
+
+    this._center.copy(character.group.position);
+
+    const forward = new THREE.Vector3(0, 0, 1);
+    forward.applyQuaternion(character.group.quaternion);
+    forward.y = 0;
+    forward.normalize();
+
+    const camPos = this._center.clone().addScaledVector(forward, 50);
+    camPos.y += 10;
+    this.camera.position.copy(camPos);
+    this.camera.lookAt(this._center);
+
+    const offset = this.camera.position.clone().sub(this._center);
+    this._spherical.setFromVector3(offset);
+    this._targetSpherical.copy(this._spherical);
   }
 
   update(delta, _character) {

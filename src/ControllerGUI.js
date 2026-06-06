@@ -19,6 +19,7 @@ export class ControllerGUI {
   constructor(camera, domElement, character, scene) {
     this.camera = camera;
     this.domElement = domElement;
+    this.character = character;
 
     /** @type {Object<string, import('./CameraController.js').CameraController>} */
     this.controllers = {};
@@ -27,7 +28,7 @@ export class ControllerGUI {
     this.currentName = null;
 
     // Build the lil-gui panel
-    this.gui = new GUI({ title: 'Camera Controller' });
+    this.gui = new GUI({ title: 'Game Settings' });
     this.gui.domElement.style.position = 'absolute';
     this.gui.domElement.style.top = '10px';
     this.gui.domElement.style.right = '10px';
@@ -37,18 +38,8 @@ export class ControllerGUI {
     this.register('Follow', new FollowController());
     this.register('FPS', new FPSController());
 
-    // GUI state
-    const state = { controller: 'Orbit' };
-
-    this.gui.add(state, 'controller', Object.keys(this.controllers))
-      .name('Controller')
-      .onChange((name) => this._switchTo(name));
-
-    // Bounding box toggle
+    // Bounding box reference (initialized later in setupCameraController)
     this.boxHelper = null;
-    if (character && scene) {
-      this._setupBoundingBoxToggle(character, scene);
-    }
 
     // Keyboard shortcut to hide/show GUI
     document.addEventListener('keydown', (e) => {
@@ -70,6 +61,7 @@ export class ControllerGUI {
    * @param {number} groundSize - the size of the ground grid
    */
   setupSceneManager(cubeManager, characterController, legoCharacter, groundSize) {
+    this._legoCharacter = legoCharacter;
     const folder = this.gui.addFolder('Scene Manager');
 
     // --- State (stored on instance so syncCurrentScene can access it) ---
@@ -87,6 +79,9 @@ export class ControllerGUI {
         if (!name || state.loading) return;
         state.loading = true;
         const ok = await SceneArchive.load(name, cubeManager, characterController, legoCharacter);
+        if (ok && this.currentName === 'Orbit') {
+          this.controllers['Orbit'].rebaseOnCharacter(legoCharacter);
+        }
         state.loading = false;
         if (!ok) {
           console.warn(`Failed to load scene "${name}"`);
@@ -199,20 +194,46 @@ export class ControllerGUI {
   }
 
   /**
-   * Create the bounding box wireframe and add a toggle to the GUI.
+   * Set up the camera controller dropdown and bounding box toggle in a
+   * "Camera Controller" subfolder of the GUI panel.
+   * This should be called after setupSceneManager if you want Scene Manager
+   * to appear first in the panel.
+   * @param {import('./LegoCharacter.js').LegoCharacter} character
+   * @param {import('three').Scene} scene
+   */
+  setupCameraController(character, scene) {
+    const folder = this.gui.addFolder('Camera Controller');
+
+    // Controller dropdown
+    const state = { controller: 'Orbit' };
+
+    folder.add(state, 'controller', Object.keys(this.controllers))
+      .name('Controller')
+      .onChange((name) => this._switchTo(name));
+
+    // Bounding box toggle
+    if (character && scene) {
+      this._setupBoundingBoxToggle(character, scene, folder);
+    }
+  }
+
+  /**
+   * Create the bounding box wireframe and add a toggle to the given parent
+   * (either the root GUI or a subfolder).
    * BoxHelper is added to the scene (not character.group) to avoid
    * double-transforming world-space coordinates produced by BoxHelper.update().
    * @param {import('./LegoCharacter.js').LegoCharacter} character
    * @param {import('three').Scene} scene
+   * @param {GUI|import('lil-gui').Folder} parent - the GUI or folder to add the control to
    */
-  _setupBoundingBoxToggle(character, scene) {
+  _setupBoundingBoxToggle(character, scene, parent) {
     this.boxHelper = new THREE.BoxHelper(character.visualGroup, 0x00ff00);
     this.boxHelper.visible = false;
     scene.add(this.boxHelper);
 
     const bboxState = { show: false };
 
-    this.gui.add(bboxState, 'show')
+    parent.add(bboxState, 'show')
       .name('BBox')
       .onChange((val) => {
         this.boxHelper.visible = val;
@@ -242,7 +263,7 @@ export class ControllerGUI {
 
     // Enable new
     if (this.controllers[name]) {
-      this.controllers[name].enable(this.camera, this.domElement);
+      this.controllers[name].enable(this.camera, this.domElement, this.character);
     }
   }
 

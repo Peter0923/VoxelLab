@@ -7,10 +7,12 @@ export class CameraController {
    * Called when this controller becomes active.
    * @param {import('three').Camera} camera
    * @param {HTMLElement} domElement
+   * @param {object} [character] - optional character to initialize camera relative to
    */
-  enable(camera, domElement) {
+  enable(camera, domElement, character) {
     this.camera = camera;
     this.domElement = domElement;
+    this.character = character;
   }
 
   /**
