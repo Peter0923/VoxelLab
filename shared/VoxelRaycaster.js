@@ -1,17 +1,27 @@
-import * as THREE from 'three';
-
 /**
  * CPU-side voxel traversal using the Amanatides-Woo algorithm.
+ *
  * Steps a ray through 3D grid cells, checking WorldMap occupancy at each step.
- * Replaces the GPU-based CubePicker — O(ray steps) instead of O(n) GPU render.
+ * Pure JavaScript — no Three.js dependencies. Importable by both browser and
+ * Node.js server (server uses it to validate block reachability).
+ *
+ * The Three.js-dependent methods (screenToRay, centerRay) remain in
+ * src/VoxelRaycaster.js which re-exports from this module.
  */
+
+import { MAX_RAY_STEPS } from './constants.js';
+
 export class VoxelRaycaster {
   /**
-   * @param {THREE.Vector3} origin - Ray origin in world space
-   * @param {THREE.Vector3} direction - Normalized ray direction
+   * Traverse a ray through the voxel grid using the Amanatides-Woo DDA algorithm.
+   *
+   * @param {{x:number, y:number, z:number}} origin - Ray origin in world space
+   * @param {{x:number, y:number, z:number}} direction - Normalized ray direction
    * @param {import('./WorldMap.js').WorldMap} worldMap
    * @param {number} [maxDistance=20]
    * @returns {{ cubeX: number, cubeY: number, cubeZ: number, placeX: number, placeY: number, placeZ: number } | null}
+   *   cubeX/Y/Z are the world-space centers of the hit block.
+   *   placeX/Y/Z are the world-space centers of the adjacent empty cell (for block placement).
    */
   static raycast(origin, direction, worldMap, maxDistance = 20) {
     let cx = Math.floor(origin.x);
@@ -81,43 +91,14 @@ export class VoxelRaycaster {
   }
 
   /**
-   * Build a ray from screen coordinates.
-   * @param {number} clientX
-   * @param {number} clientY
-   * @param {THREE.Camera} camera
-   * @param {HTMLCanvasElement} canvas
-   * @returns {{ origin: THREE.Vector3, direction: THREE.Vector3 }}
-   */
-  static screenToRay(clientX, clientY, camera, canvas) {
-    const rect = canvas.getBoundingClientRect();
-    const ndc = new THREE.Vector2(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1
-    );
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(ndc, camera);
-    return { origin: raycaster.ray.origin, direction: raycaster.ray.direction };
-  }
-
-  /**
-   * Build a ray from the center of the screen (for pointer-lock / FPS modes).
-   * @param {THREE.Camera} camera
-   * @returns {{ origin: THREE.Vector3, direction: THREE.Vector3 }}
-   */
-  static centerRay(camera) {
-    const direction = new THREE.Vector3();
-    camera.getWorldDirection(direction);
-    return { origin: camera.position.clone(), direction };
-  }
-
-  /**
    * Ray-plane intersection with the Y=0 ground plane.
    * Returns the world-space center of the intersected grid cell.
-   * @param {THREE.Vector3} origin
-   * @param {THREE.Vector3} direction
-   * @param {number} groundSize
-   * @param {number} [maxDistance=50]
-   * @returns {{ x: number, z: number } | null}
+   *
+   * @param {{x:number, y:number, z:number}} origin - Ray origin
+   * @param {{x:number, y:number, z:number}} direction - Ray direction
+   * @param {number} groundSize - Size of the ground grid (e.g. 50)
+   * @param {number} [maxDistance=50] - Max ray distance
+   * @returns {{x: number, z: number} | null} - World-space center of ground cell
    */
   static pickGround(origin, direction, groundSize, maxDistance = 50) {
     if (direction.y >= 0) return null; // looking up or level — won't hit the ground

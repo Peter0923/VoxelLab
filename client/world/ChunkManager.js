@@ -289,14 +289,23 @@ export class ChunkManager {
   }
 
   /**
-   * Rebuild geometry for all dirty chunks.
+   * Rebuild geometry for dirty chunks, spread across frames.
+   * Rebuilds at most MAX_REBUILDS_PER_FRAME chunks per call to avoid
+   * multi-frame freezes when many chunks need rebuilding at once.
    * @param {import('./WorldMap.js').WorldMap} worldMap
    */
   rebuildDirty(worldMap) {
+    if (this._dirtyChunks.size === 0) return;
+
+    let rebuilt = 0;
+    const MAX_REBUILDS_PER_FRAME = 2;
+
     for (const chunk of this._dirtyChunks) {
+      if (rebuilt >= MAX_REBUILDS_PER_FRAME) break;
       chunk.rebuildGeometry(worldMap);
+      this._dirtyChunks.delete(chunk);
+      rebuilt++;
     }
-    this._dirtyChunks.clear();
   }
 
   /**

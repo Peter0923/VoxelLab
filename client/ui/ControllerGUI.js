@@ -1,9 +1,9 @@
 import GUI from 'lil-gui';
 import * as THREE from 'three';
-import { OrbitController } from './OrbitController.js';
-import { FollowController } from './FollowController.js';
-import { FPSController } from './FPSController.js';
-import { SceneArchive } from './SceneArchive.js';
+import { OrbitController } from '../camera/OrbitController.js';
+import { FollowController } from '../camera/FollowController.js';
+import { FPSController } from '../camera/FPSController.js';
+import { SceneArchive } from '../world/SceneArchive.js';
 
 /**
  * Manages camera controllers and provides a lil-gui panel to switch between them.
@@ -51,6 +51,9 @@ export class ControllerGUI {
 
     // Start with Orbit
     this._switchTo('Orbit');
+
+    // Disconnect button state (set by setupMultiplayerInfo)
+    this._disconnectCallback = null;
   }
 
   /**
@@ -63,6 +66,7 @@ export class ControllerGUI {
   setupSceneManager(cubeManager, characterController, legoCharacter, groundSize) {
     this._legoCharacter = legoCharacter;
     const folder = this.gui.addFolder('Scene Manager');
+    this._sceneFolder = folder; // stash reference for show/hide
 
     // --- State (stored on instance so syncCurrentScene can access it) ---
     this._sceneState = {
@@ -276,6 +280,44 @@ export class ControllerGUI {
     // Enable new
     if (this.controllers[name]) {
       this.controllers[name].enable(this.camera, this.domElement, this.character);
+    }
+  }
+
+  /**
+   * Add a "Multiplayer" section to the GUI. Called by main.js when in multiplayer mode.
+   * @param {object} opts
+   * @param {string} opts.worldName
+   * @param {number} opts.playerCount
+   * @param {function():void} opts.onDisconnect
+   */
+  setupMultiplayerInfo(opts) {
+    const folder = this.gui.addFolder('Multiplayer');
+    this._multiplayerFolder = folder;
+
+    const info = { world: opts.worldName || '—', players: `${opts.playerCount || 0}` };
+    folder.add(info, 'world').name('World').disable();
+    folder.add(info, 'players').name('Players').disable();
+
+    this._disconnectCallback = opts.onDisconnect || null;
+
+    const dcObj = {
+      disconnect: () => {
+        if (this._disconnectCallback) {
+          this._disconnectCallback();
+        }
+      }
+    };
+    folder.add(dcObj, 'disconnect').name('Disconnect');
+  }
+
+  /**
+   * Show or hide the Scene Manager folder.
+   * In online mode scenes are managed by the server, so the folder is hidden.
+   * @param {boolean} visible
+   */
+  showSceneManager(visible) {
+    if (this._sceneFolder) {
+      this._sceneFolder.show(visible);
     }
   }
 

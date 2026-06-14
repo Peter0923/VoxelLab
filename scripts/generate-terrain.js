@@ -8,7 +8,7 @@
  * The output file is written to public/scenes/{name}.scene
  */
 
-import { generateTerrainCubes, getHeightAt, formatSceneJSON } from '../src/TerrainGenerator.js';
+import { generateTerrainCubes, getHeightAt, formatSceneJSON } from '../client/world/TerrainGenerator.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
