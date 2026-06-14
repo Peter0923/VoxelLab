@@ -26,7 +26,7 @@ import {
  * @param {{w:boolean, a:boolean, s:boolean, d:boolean, space:boolean}} inputKeys - Current key states
  * @param {import('./WorldMap.js').WorldMap} worldMap - The world's block occupancy map
  * @param {number} delta - Frame delta time in seconds (capped to prevent speed hacks)
- * @param {{inOrbit: boolean}} [opts] - Optional flags (e.g. inOrbit: disable movement)
+ * @param {{inOrbit: boolean, players?: Array<{posX:number, posY:number, posZ:number}>}} [opts] - Optional flags
  * @returns {{
  *   posX: number, posY: number, posZ: number,
  *   rotationY: number, velocityY: number,
@@ -35,7 +35,7 @@ import {
  * }} The new state after this step
  */
 export function simulateStep(state, inputKeys, worldMap, delta, opts = {}) {
-  const { inOrbit = false } = opts;
+  const { inOrbit = false, players = [] } = opts;
 
   let { posX, posY, posZ, rotationY, velocityY, isGrounded, isJumping } = state;
 
@@ -94,7 +94,6 @@ export function simulateStep(state, inputKeys, worldMap, delta, opts = {}) {
   }
 
   // --- Per-axis movement with collision resolution ---
-  // This prevents ground-block Z overlap from interfering with X sliding.
   const pos = { x: posX, y: posY, z: posZ };
 
   const axes = [
@@ -129,13 +128,15 @@ export function simulateStep(state, inputKeys, worldMap, delta, opts = {}) {
     isJumping = false;
   } else if (velocityY <= 0) {
     const footY = pos.y;
-    const blockYBelow = Math.floor(footY - 0.01);
     const hx = CHAR_HALF_X;
     const hz = CHAR_HALF_Z;
     const footMinX = pos.x - hx;
     const footMaxX = pos.x + hx;
     const footMinZ = pos.z - hz;
     const footMaxZ = pos.z + hz;
+
+    // Check block ground
+    const blockYBelow = Math.floor(footY - 0.01);
     const bx0 = Math.floor(footMinX);
     const bx1 = Math.floor(footMaxX - CELL_EPSILON);
     const bz0 = Math.floor(footMinZ);
@@ -151,6 +152,40 @@ export function simulateStep(state, inputKeys, worldMap, delta, opts = {}) {
         }
       }
       if (isGrounded) break;
+    }
+
+    // If not grounded on a block, check if standing on another player's head.
+    // This ensures the grounded state is consistent between client and server
+    // and prevents the animation system from showing jump/walk animations
+    // when standing still on another player.
+    // We use a wider downward tolerance (feet can be up to 0.05 units below the
+    // head surface) because gravity may push the player slightly into the
+    // surface before this check runs. This matches the tolerance used by
+    // block ground detection (which checks blockYBelow = Math.floor(footY - 0.01)).
+    if (!isGrounded && players.length > 0) {
+      for (const other of players) {
+        const otherHeadY = other.posY + CHAR_HEIGHT;
+
+        // Feet must be within 0.06 above or 0.08 below the head surface.
+        // The asymmetry allows for gravity-based penetration before resolution.
+        if (footY > otherHeadY + 0.06) continue;
+        if (footY < otherHeadY - 0.08) continue;
+
+        // Check horizontal AABB overlap
+        const oMinX = other.posX - CHAR_HALF_X;
+        const oMaxX = other.posX + CHAR_HALF_X;
+        const oMinZ = other.posZ - CHAR_HALF_Z;
+        const oMaxZ = other.posZ + CHAR_HALF_Z;
+
+        if (footMaxX > oMinX && footMinX < oMaxX &&
+            footMaxZ > oMinZ && footMinZ < oMaxZ) {
+          pos.y = otherHeadY;
+          velocityY = 0;
+          isGrounded = true;
+          isJumping = false;
+          break;
+        }
+      }
     }
   }
 
@@ -170,12 +205,6 @@ export function simulateStep(state, inputKeys, worldMap, delta, opts = {}) {
 /**
  * Resolves collisions on a single axis after the character has moved along that axis.
  * Returns true if the character was pushed (velocity should be zeroed on this axis).
- *
- * @param {{x:number, y:number, z:number}} pos - Character position (mutated in-place)
- * @param {'x'|'y'|'z'} axis - The axis to resolve on
- * @param {number} amount - The movement amount (used for direction, not magnitude)
- * @param {import('./WorldMap.js').WorldMap} worldMap
- * @returns {boolean} true if the character was pushed
  */
 export function resolveAxisOnWorld(pos, axis, amount, worldMap) {
   const aMinX = pos.x - CHAR_HALF_X;
@@ -235,13 +264,6 @@ export function resolveAxisOnWorld(pos, axis, amount, worldMap) {
 
 /**
  * Final safety pass: resolves any remaining AABB-block overlaps on any axis.
- * Runs after all per-axis passes to catch overlaps that multi-axis movement
- * may have left behind. Iterates up to maxIter times to avoid infinite loops.
- *
- * @param {{x:number, y:number, z:number}} pos - Character position (mutated in-place)
- * @param {import('./WorldMap.js').WorldMap} worldMap
- * @param {number} [maxIter=3]
- * @returns {boolean} true if any overlap was resolved
  */
 export function resolveAnyOverlapOnWorld(pos, worldMap, maxIter = 3) {
   for (let iter = 0; iter < maxIter; iter++) {
@@ -274,7 +296,6 @@ export function resolveAnyOverlapOnWorld(pos, worldMap, maxIter = 3) {
 
           if (overlapX <= 0 || overlapY <= 0 || overlapZ <= 0) continue;
 
-          // Check each axis and pick the deepest overlap
           if (overlapX > bestOverlap) {
             bestOverlap = overlapX;
             bestAxis = 'x';
@@ -299,13 +320,6 @@ export function resolveAnyOverlapOnWorld(pos, worldMap, maxIter = 3) {
 
 /**
  * Check if a block at integer world coordinates overlaps the player's AABB.
- * Used by the server to prevent placing blocks inside players.
- *
- * @param {{x:number, y:number, z:number}} pos - Player position
- * @param {number} bx - Block X (integer, floor of world X)
- * @param {number} by - Block Y (integer, floor of world Y)
- * @param {number} bz - Block Z (integer, floor of world Z)
- * @returns {boolean} true if the block overlaps the player's AABB
  */
 export function checkPlayerBlockOverlap(pos, bx, by, bz) {
   const charMinX = pos.x - CHAR_HALF_X;
@@ -324,12 +338,6 @@ export function checkPlayerBlockOverlap(pos, bx, by, bz) {
 
 /**
  * Check if placing a block at the given world position would overlap any player.
- *
- * @param {number} worldX - Block world X (center, e.g. 5.5)
- * @param {number} worldY - Block world Y (center)
- * @param {number} worldZ - Block world Z (center)
- * @param {Array<{posX:number, posY:number, posZ:number}>} players - All players to check
- * @returns {boolean} true if the block would overlap any player
  */
 export function doesBlockOverlapAnyPlayer(worldX, worldY, worldZ, players) {
   const bx = Math.floor(worldX);
@@ -350,15 +358,6 @@ export function doesBlockOverlapAnyPlayer(worldX, worldY, worldZ, players) {
 /**
  * Resolve AABB overlaps between all player pairs by pushing both players
  * apart equally on the axis of minimum overlap.
- *
- * Called on the server after all player inputs are processed, so the
- * authoritative world state has no inter-penetrating players.
- *
- * Iterates up to maxIter times to handle chain reactions (3+ players in a cluster).
- *
- * @param {Array<{posX:number, posY:number, posZ:number}>} players - Player objects with position fields (mutated in-place)
- * @param {number} [maxIter=3]
- * @returns {boolean} true if any overlaps were resolved this tick
  */
 export function resolvePlayerOverlaps(players, maxIter = 3) {
   if (players.length < 2) return false;
@@ -371,7 +370,6 @@ export function resolvePlayerOverlaps(players, maxIter = 3) {
     for (let i = 0; i < players.length; i++) {
       const a = players[i];
 
-      // Compute AABB for player a once per inner-loop
       const aMinX = a.posX - CHAR_HALF_X;
       const aMaxX = a.posX + CHAR_HALF_X;
       const aMinY = a.posY;
@@ -395,7 +393,6 @@ export function resolvePlayerOverlaps(players, maxIter = 3) {
 
         if (overlapX <= 0 || overlapY <= 0 || overlapZ <= 0) continue;
 
-        // Pick the axis of minimum overlap (least penetration)
         let axis, amount;
         if (overlapX <= overlapY && overlapX <= overlapZ) {
           axis = 'X';
@@ -409,13 +406,9 @@ export function resolvePlayerOverlaps(players, maxIter = 3) {
         }
 
         if (axis === 'Y') {
-          // Vertical overlap: only push the TOP player up.
-          // Never push the bottom player down — they may be standing on ground
-          // or a platform and shouldn't be pushed through it.
           const topPlayer = a.posY >= b.posY ? a : b;
           topPlayer.posY += amount;
         } else {
-          // Horizontal overlap: push both players apart equally
           const halfPush = amount / 2;
           const aSign = a['pos' + axis] < b['pos' + axis] ? -1 : 1;
 
@@ -436,11 +429,6 @@ export function resolvePlayerOverlaps(players, maxIter = 3) {
 
 /**
  * Check if a player position is standing on top of another player's head.
- *
- * @param {{x:number, y:number, z:number}} pos - The player position to check
- * @param {Array<{posX:number, posY:number, posZ:number, id?:string}>} players - All other players
- * @param {string} [excludeId] - Optional player ID to exclude from the check (self)
- * @returns {boolean} true if the player is standing on another player's head
  */
 export function checkPlayerOnAnyPlayer(pos, players, excludeId) {
   if (!players || players.length === 0) return false;
@@ -456,13 +444,9 @@ export function checkPlayerOnAnyPlayer(pos, players, excludeId) {
 
     const otherHeadY = other.posY + CHAR_HEIGHT;
 
-    // Feet must be very close to the top of the other player's head
     if (Math.abs(footY - otherHeadY) > 0.06) continue;
-
-    // Must be above the other player (feet above their vertical midpoint)
     if (footY < otherHeadY - 0.02) continue;
 
-    // Check horizontal AABB overlap
     const oMinX = other.posX - CHAR_HALF_X;
     const oMaxX = other.posX + CHAR_HALF_X;
     const oMinZ = other.posZ - CHAR_HALF_Z;
@@ -478,16 +462,6 @@ export function checkPlayerOnAnyPlayer(pos, players, excludeId) {
 
 /**
  * Push the local player out of any overlapping remote players.
- *
- * Called on the client every frame for immediate collision feedback
- * (the server will still reconcile if needed).
- *
- * Only the local player is moved; remote positions are treated as read-only
- * since the client cannot move other players.
- *
- * @param {{x:number, y:number, z:number}} localPos - Local player position (mutated in-place, THREE.Vector3 compatible)
- * @param {Array<{posX:number, posY:number, posZ:number}>} remotePositions - Remote player positions
- * @returns {{wasPushed: boolean, isOnPlayerHead: boolean}} Result of the push
  */
 export function pushLocalPlayerOutOfRemotePlayers(localPos, remotePositions) {
   if (!remotePositions || remotePositions.length === 0) {
@@ -516,38 +490,33 @@ export function pushLocalPlayerOutOfRemotePlayers(localPos, remotePositions) {
     const overlapY = Math.min(aMaxY, bMaxY) - Math.max(aMinY, bMinY);
     const overlapZ = Math.min(aMaxZ, bMaxZ) - Math.max(aMinZ, bMinZ);
 
-    // Check head-standing first, using a relaxed Y bounds check that
-    // tolerates zero overlap (feet exactly at head surface) as well as
-    // slight clearance (up to 0.06 units above the head, matching
-    // checkPlayerOnAnyPlayer). This is critical because when the player's
-    // feet are perfectly flush on the head, overlapY is exactly 0, which
-    // would cause the normal AABB check below to skip this remote player.
+    // Check head-standing first — tolerates zero Y overlap.
+    // When standing on a head, we ONLY snap Y and skip horizontal push,
+    // so the player can walk freely on the head surface without stuttering.
+    // The server also skips horizontal push for head-standing players
+    // (resolvePlayerOverlaps requires overlapY > 0, which is zero on a flush head).
     const remoteHeadY = remote.posY + CHAR_HEIGHT;
     const feetOnHead = localPos.y >= remoteHeadY - 0.06 &&
                        localPos.y <= remoteHeadY + 0.1;
     const onHead = localPos.y > remote.posY && feetOnHead;
 
     if (onHead) {
-      // Snap feet exactly to remote player's head
       localPos.y = remoteHeadY;
       isOnPlayerHead = true;
       wasPushed = true;
+      continue; // Skip horizontal push to avoid fighting walk movement
     }
 
-    // Standard AABB overlap check — skip if no overlap.
-    // But if we detected head-standing with zero Y overlap, we still
-    // need to check horizontal overlap to push the player apart sideways.
+    // Resolve horizontal overlap (only when not standing on head)
     if (overlapX <= 0 || overlapZ <= 0) continue;
-    if (!onHead && overlapY <= 0) continue;
+    if (overlapY <= 0) continue;
 
-    // Resolve horizontal overlap (push local player away from remote).
     if (overlapX <= overlapZ) {
       localPos.x += (localPos.x < remote.posX ? -1 : 1) * (overlapX + COLLISION_MARGIN);
     } else {
       localPos.z += (localPos.z < remote.posZ ? -1 : 1) * (overlapZ + COLLISION_MARGIN);
     }
     wasPushed = true;
-
   }
 
   return { wasPushed, isOnPlayerHead };
@@ -555,17 +524,8 @@ export function pushLocalPlayerOutOfRemotePlayers(localPos, remotePositions) {
 
 /**
  * Check whether a player has ground (block or y≤0) directly below their feet.
- *
- * Used after player-player resolution to detect when a player has been pushed
- * off a ledge and should start falling immediately rather than waiting for the
- * next tick's isGrounded update.
- *
- * @param {{x:number, y:number, z:number}} pos - Player position
- * @param {import('./WorldMap.js').WorldMap} worldMap
- * @returns {boolean} true if there is solid ground directly below the player
  */
 export function checkPlayerGrounded(pos, worldMap) {
-  // Standing on the base plane (y=0)
   if (pos.y <= 0) return true;
 
   const footY = pos.y;

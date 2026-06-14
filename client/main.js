@@ -527,9 +527,12 @@ function animate() {
   chatManager.update();
 
   // --- Local player physics + animation ---
-  // Only run physics when in game (multiplayer connected or offline mode active)
+  // Only run physics when in game (multiplayer connected or offline mode active).
+  // Pass remote player positions for ground detection so the player correctly
+  // shows idle (not jump/walk) when standing on another player's head.
   if (isMultiplayer || interactionManager) {
-    characterController.update(delta);
+    const remotePositions = remotePlayerManager ? remotePlayerManager.getAllPositions() : [];
+    characterController.update(delta, remotePositions);
   }
 
   // --- Player-player collision (client-side prediction) ---

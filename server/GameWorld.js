@@ -239,6 +239,13 @@ export class GameWorld {
     let lastAnim = null;
     let lastSeq = 0;
 
+    // Build list of other player positions for ground-on-head detection.
+    // Uses positions from the current tick (players processed so far may have
+    // been updated, others are from the previous tick — close enough for
+    // head-standing ground detection).
+    const otherPlayers = Array.from(this.players.values())
+      .filter(p => p.id !== player.id);
+
     for (const input of inputs) {
       const { inputKeys, rotationY, delta, seq } = input;
 
@@ -259,6 +266,7 @@ export class GameWorld {
         inputKeys,
         this.worldMap,
         cappedDelta,
+        { players: otherPlayers }
       );
 
       // Update player state
@@ -324,6 +332,8 @@ export class GameWorld {
         anims.set(player.id, anim);
       } else {
         // No inputs queued — run a gravity-only simulation step
+        const otherPlayers = Array.from(this.players.values())
+          .filter(p => p.id !== player.id);
         const newState = simulateStep(
           {
             posX: player.posX, posY: player.posY, posZ: player.posZ,
@@ -333,6 +343,7 @@ export class GameWorld {
           { w: false, a: false, s: false, d: false, space: false },
           this.worldMap,
           tickDelta,
+          { players: otherPlayers }
         );
         player.posX = newState.posX;
         player.posY = newState.posY;

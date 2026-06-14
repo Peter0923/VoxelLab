@@ -48,8 +48,9 @@ export class CharacterController {
    * produce identical results from identical inputs.
    *
    * @param {number} delta - Frame delta time in seconds
+   * @param {Array<{posX:number, posY:number, posZ:number}>} [players] - Other player positions for ground detection
    */
-  update(delta) {
+  update(delta, players) {
     const input = this._input;
     const lego = this._lego;
     const inOrbit = this._ctrlGUI && this._ctrlGUI.currentName === 'Orbit';
@@ -112,7 +113,7 @@ export class CharacterController {
       inputKeys,
       this._worldMap,
       delta,
-      { inOrbit }
+      { inOrbit, players: players || [] }
     );
 
     // --- Apply physics result to the scene ---
