@@ -463,7 +463,7 @@ export function checkPlayerOnAnyPlayer(pos, players, excludeId) {
 /**
  * Push the local player out of any overlapping remote players.
  */
-export function pushLocalPlayerOutOfRemotePlayers(localPos, remotePositions) {
+export function pushLocalPlayerOutOfRemotePlayers(localPos, remotePositions, localPlayerId) {
   if (!remotePositions || remotePositions.length === 0) {
     return { wasPushed: false, isOnPlayerHead: false };
   }
@@ -490,11 +490,9 @@ export function pushLocalPlayerOutOfRemotePlayers(localPos, remotePositions) {
     const overlapY = Math.min(aMaxY, bMaxY) - Math.max(aMinY, bMinY);
     const overlapZ = Math.min(aMaxZ, bMaxZ) - Math.max(aMinZ, bMinZ);
 
-    // Check head-standing first — tolerates zero Y overlap.
+    // Check head-standing first: local player standing on REMOTE player's head.
     // When standing on a head, we ONLY snap Y and skip horizontal push,
     // so the player can walk freely on the head surface without stuttering.
-    // The server also skips horizontal push for head-standing players
-    // (resolvePlayerOverlaps requires overlapY > 0, which is zero on a flush head).
     const remoteHeadY = remote.posY + CHAR_HEIGHT;
     const feetOnHead = localPos.y >= remoteHeadY - 0.06 &&
                        localPos.y <= remoteHeadY + 0.1;
@@ -507,7 +505,17 @@ export function pushLocalPlayerOutOfRemotePlayers(localPos, remotePositions) {
       continue; // Skip horizontal push to avoid fighting walk movement
     }
 
-    // Resolve horizontal overlap (only when not standing on head)
+    // Reverse check: REMOTE player standing on LOCAL player's head.
+    // Use the server-authoritative attachedTo field when available (more
+    // reliable than geometric checks during rapid Y changes like jumps).
+    // Skip horizontal push so the local player can move freely beneath
+    // the attached remote player — the remote's Y is handled separately
+    // via the Y-override in RemotePlayerManager.
+    if (localPlayerId !== undefined && remote.attachedTo === localPlayerId) {
+      continue;
+    }
+
+    // Resolve horizontal overlap (only when not standing on head, in either direction)
     if (overlapX <= 0 || overlapZ <= 0) continue;
     if (overlapY <= 0) continue;
 

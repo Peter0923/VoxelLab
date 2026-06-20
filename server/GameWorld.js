@@ -355,6 +355,28 @@ export class GameWorld {
       }
     }
 
+    // Keep vertically-attached players glued to their carrier's head.
+    // When the carrier moves down (falling/descending from a jump), the
+    // rider must follow immediately.  Without this, the rider drifts above
+    // the carrier's head creating a gap that exceeds the 0.06 tolerance in
+    // checkPlayerOnAnyPlayer, causing a false detachment.  resolvePlayerOverlaps
+    // only handles penetration (rider inside carrier), not gaps.
+    //
+    // Only snaps riders that are still grounded — a rider who just jumped
+    // (isGrounded=false) is detaching and should not be pulled back down.
+    for (const player of this.players.values()) {
+      if (player.attachedTo && player.isGrounded) {
+        const carrier = this.players.get(player.attachedTo);
+        if (carrier) {
+          const carrierHeadY = carrier.posY + CHAR_HEIGHT;
+          if (player.posY > carrierHeadY) {
+            player.posY = carrierHeadY;
+            player.velocityY = 0;
+          }
+        }
+      }
+    }
+
     // Resolve player-player overlaps so characters don't walk through each other.
     // Must run AFTER all inputs are processed but BEFORE broadcasting states.
     if (this.players.size >= 2) {
@@ -377,14 +399,38 @@ export class GameWorld {
     // isGrounded flag is stale from before the push.
     // Conversely, a player pushed onto another player's head must be marked
     // grounded so they don't fall through on the next tick.
+    //
+    // Also tracks the vertical-attached state: when a player is standing on
+    // another player's head, attachedTo is set so the client can apply local
+    // Y prediction and eliminate interpolation lag for head-standing visuals.
     const playerList = Array.from(this.players.values());
     for (const player of this.players.values()) {
+      // Reset attachedTo each tick; it will be set below if the player
+      // is standing on another player's head.
+      player.attachedTo = null;
+
       if (player.isGrounded) {
         const pos = { x: player.posX, y: player.posY, z: player.posZ };
-        if (!checkPlayerGrounded(pos, this.worldMap) &&
-            !checkPlayerOnAnyPlayer(pos, playerList, player.id)) {
+        const onBlock = checkPlayerGrounded(pos, this.worldMap);
+        const onPlayer = checkPlayerOnAnyPlayer(pos, playerList, player.id);
+
+        if (!onBlock && !onPlayer) {
+          // No longer grounded — they were pushed off a ledge or the player
+          // below moved out from under them.
           player.isGrounded = false;
+        } else if (onPlayer && !onBlock) {
+          // Only standing on another player (not blocks) — record who
+          for (const other of playerList) {
+            if (other.id === player.id) continue;
+            const otherHeadY = other.posY + CHAR_HEIGHT;
+            if (Math.abs(pos.y - otherHeadY) < 0.06) {
+              player.attachedTo = other.id;
+              break;
+            }
+          }
         }
+        // If onBlock is true (with or without onPlayer), attachedTo stays null.
+        // Block-grounding takes priority for attachment tracking.
       } else {
         // Player is airborne — check if they've landed on another player
         const pos = { x: player.posX, y: player.posY, z: player.posZ };
@@ -395,6 +441,7 @@ export class GameWorld {
             const otherHeadY = other.posY + CHAR_HEIGHT;
             if (Math.abs(pos.y - otherHeadY) < 0.06) {
               player.posY = otherHeadY;
+              player.attachedTo = other.id;
               break;
             }
           }

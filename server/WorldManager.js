@@ -63,7 +63,7 @@ export class WorldManager {
         break;
 
       case 'join':
-        this._handleJoin(ws, msg.worldId, msg.nickname);
+        this._handleJoin(ws, msg.worldId, msg.nickname, msg.characterId);
         break;
 
       case 'leave':
@@ -91,7 +91,7 @@ export class WorldManager {
   /**
    * Handle a join request: create or join a world.
    */
-  _handleJoin(ws, worldId, nickname) {
+  _handleJoin(ws, worldId, nickname, characterId) {
     // Validate
     if (!worldId || !nickname || typeof worldId !== 'string' || typeof nickname !== 'string') {
       this._sendTo(ws, { type: 'error', message: 'Invalid worldId or nickname' });
@@ -123,7 +123,7 @@ export class WorldManager {
     }
 
     // Create player and add to world
-    const player = new Player(ws, cleanName);
+    const player = new Player(ws, cleanName, characterId || 'classic');
     this._connections.set(ws, { player, worldId: cleanWorldId });
     world.addPlayer(player);
   }

@@ -49,6 +49,14 @@ export class ControllerGUI {
       }
     });
 
+    // FPS limit setting (default to 60Hz to keep frame rate consistent)
+    /** @type {'Max'|'60Hz'} */
+    this.fpsLimit = '60Hz';
+    const fpsObj = { fps: this.fpsLimit };
+    this.gui.add(fpsObj, 'fps', ['Max', '60Hz'])
+      .name('FPS Limit')
+      .onChange((val) => { this.fpsLimit = val; });
+
     // Start with Orbit
     this._switchTo('Orbit');
 

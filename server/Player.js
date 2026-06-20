@@ -13,8 +13,9 @@ export class Player {
   /**
    * @param {import('ws').WebSocket} ws - The player's WebSocket connection
    * @param {string} nickname - Player's chosen display name
+   * @param {string} [characterId='classic'] - Selected character preset ID
    */
-  constructor(ws, nickname) {
+  constructor(ws, nickname, characterId = 'classic') {
     /** Unique player ID (session-scoped) */
     this.id = `p-${_nextId++}`;
 
@@ -33,13 +34,20 @@ export class Player {
     this.isGrounded = true;
     this.isJumping = false;
 
+    /**
+     * Player ID this player is standing on (if any), or null.
+     * Set by the server re-grounding pass each tick. Broadcast to clients
+     * so they can apply local Y prediction for head-standing remote players.
+     */
+    this.attachedTo = null;
+
     // --- CSP tracking ---
     /** Last input sequence number processed by the server */
     this.lastProcessedSeq = 0;
 
     // --- Visual ---
-    /** Color for remote player model (derived from ID) */
-    this.color = this._deriveColor();
+    /** Selected character preset ID */
+    this.characterId = characterId;
 
     // --- Input queue (accumulates all inputs between ticks) ---
     this._pendingInputs = []; // Array of { inputKeys, rotationY, delta, seq }
@@ -70,44 +78,6 @@ export class Player {
   }
 
   /**
-   * Derive a deterministic color from the player ID for visual variety.
-   * @returns {{r:number, g:number, b:number}} RGB values 0-1
-   */
-  _deriveColor() {
-    // Simple hash of the player ID
-    let hash = 0;
-    for (let i = 0; i < this.id.length; i++) {
-      hash = ((hash << 5) - hash) + this.id.charCodeAt(i);
-      hash |= 0; // Convert to 32-bit int
-    }
-    const absHash = Math.abs(hash);
-    // Generate a hue from the hash, then convert to RGB
-    const hue = (absHash % 360) / 360;
-    return this._hslToRgb(hue, 0.7, 0.5);
-  }
-
-  /**
-   * Convert HSL to RGB (all values 0-1).
-   */
-  _hslToRgb(h, s, l) {
-    const hue2rgb = (p, q, t) => {
-      if (t < 0) t += 1;
-      if (t > 1) t -= 1;
-      if (t < 1 / 6) return p + (q - p) * 6 * t;
-      if (t < 1 / 2) return q;
-      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-      return p;
-    };
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-    return {
-      r: hue2rgb(p, q, h + 1 / 3),
-      g: hue2rgb(p, q, h),
-      b: hue2rgb(p, q, h - 1 / 3),
-    };
-  }
-
-  /**
    * Get a plain-object snapshot of this player's public state
    * (for broadcasting to other players).
    */
@@ -122,7 +92,8 @@ export class Player {
       velocityY: this.velocityY,
       isGrounded: this.isGrounded,
       anim: anim || 'idle',
-      color: this.color,
+      characterId: this.characterId,
+      attachedTo: this.attachedTo,
     };
   }
 
@@ -137,7 +108,7 @@ export class Player {
       posY: this.posY,
       posZ: this.posZ,
       rotationY: this.rotationY,
-      color: this.color,
+      characterId: this.characterId,
     };
   }
 }

@@ -19,6 +19,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        gap: 2rem;
         background: rgba(5, 5, 20, 0.92);
         z-index: 1000;
         color: #e0e0ff;
@@ -291,6 +292,83 @@
         font-weight: 600;
         z-index: 2000;
         pointer-events: none;
+      }
+      /* --- Character Selection --- */
+      .character-grid {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin: 0.5rem 0;
+      }
+
+      .character-card {
+        flex: 1;
+        max-width: 90px;
+        padding: 8px 4px;
+        background: rgba(30, 30, 70, 0.6);
+        border: 2px solid rgba(100, 120, 200, 0.3);
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.2s;
+        color: #aabbdd;
+        font-size: 0.75rem;
+        font-family: inherit;
+      }
+
+      .character-card:hover {
+        background: rgba(60, 60, 120, 0.6);
+        border-color: rgba(100, 140, 255, 0.5);
+      }
+
+      .character-card.selected {
+        border-color: #6688ff;
+        background: rgba(60, 80, 180, 0.3);
+        color: #ccddff;
+        box-shadow: 0 0 10px rgba(100, 140, 255, 0.3);
+      }
+
+      .character-card-name {
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+
+      .character-card-swatches {
+        display: flex;
+        gap: 2px;
+        justify-content: center;
+      }
+
+      .color-swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        display: inline-block;
+      }
+
+      /* --- Face Preview --- */
+      #face-preview {
+        width: 200px;
+        text-align: center;
+        background: rgba(20, 20, 60, 0.85);
+        border: 1px solid rgba(100, 120, 200, 0.3);
+        border-radius: 12px;
+        padding: 1rem 1rem 0.75rem;
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+      }
+
+      #face-preview canvas {
+        display: block;
+        margin: 0 auto;
+        border-radius: 6px;
+      }
+
+      .face-preview-name {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #8899cc;
+        margin-top: 0.5rem;
       }
     </style>
   </head>

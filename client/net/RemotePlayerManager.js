@@ -1,4 +1,5 @@
 import { RemotePlayerModel } from './RemotePlayerModel.js';
+import { CHAR_HEIGHT, getPresetById } from '../../shared/constants.js';
 
 /**
  * Manages the lifecycle and rendering of remote player models.
@@ -17,23 +18,32 @@ export class RemotePlayerManager {
 
     /** @type {Map<string, RemotePlayerModel>} */
     this._models = new Map();
+
+    /**
+     * Cached from the most recent update() call — the local player's
+     * current Y position and ID. Used for Y-override when a remote
+     * player is vertically attached to the local player.
+     */
+    this._localPlayerPosY = 0;
+    this._localPlayerId = null;
   }
 
   /**
    * Add a remote player model to the scene.
    * @param {string} playerId
    * @param {string} nickname
-   * @param {{r:number,g:number,b:number}} [color]
+   * @param {string} [characterId]
    */
-  addPlayer(playerId, nickname, color) {
+  addPlayer(playerId, nickname, characterId) {
     if (this._models.has(playerId)) return;
 
-    const modelColor = color || this._stateManager.getPlayerColor(playerId) || { r: 0.8, g: 0.3, b: 0.3 };
-    const model = new RemotePlayerModel(nickname, modelColor);
+    const cid = characterId || this._stateManager.getPlayerCharacterId(playerId) || 'classic';
+    const preset = getPresetById(cid);
+    const model = new RemotePlayerModel(nickname, preset);
     this._scene.add(model.group);
     this._models.set(playerId, model);
 
-    console.log(`[RemotePlayerManager] Added player "${nickname}" (${playerId})`);
+    console.log(`[RemotePlayerManager] Added player "${nickname}" (${playerId}) char=${cid}`);
   }
 
   /**
@@ -56,8 +66,14 @@ export class RemotePlayerManager {
    * update animations. Call every frame.
    *
    * @param {number} delta - Frame delta time in seconds
+   * @param {number} [localPlayerPosY] - Local player's current Y for attachment override
+   * @param {string|null} [localPlayerId] - Local player's ID for attachment check
    */
-  update(delta) {
+  update(delta, localPlayerPosY, localPlayerId) {
+    // Store for use by getAllPositions()
+    this._localPlayerPosY = localPlayerPosY !== undefined ? localPlayerPosY : 0;
+    this._localPlayerId = localPlayerId || null;
+
     // Frame-rate-independent smoothing factor
     const smoothRate = 15; // per second
     const t = 1 - Math.exp(-smoothRate * delta);
@@ -66,13 +82,30 @@ export class RemotePlayerManager {
       const state = this._stateManager.getInterpolatedState(playerId);
       if (!state) continue;
 
-      // Smoothly lerp toward interpolated position (hides micro-discontinuities)
+      // Determine target Y:
+      // - If this remote player is vertically attached to the local player,
+      //   bypass the 150ms interpolation delay on Y by using the local
+      //   player's current head position as the target.
+      // - X and Z always use normal interpolation so horizontal movement
+      //   is still smooth.
+      const attached = localPlayerId && state.attachedTo === localPlayerId;
+      const targetY = attached
+        ? localPlayerPosY + CHAR_HEIGHT
+        : state.posY;
+
+      // Smoothly lerp toward target position (hides micro-discontinuities
+      // from network jitter).  When vertically attached, the Y target comes
+      // from the local player's position (no jitter), so we set it directly
+      // to avoid lerp-induced lag during rapid vertical movement (jumping/falling).
       const current = model.group.position;
       model.group.position.set(
         current.x + (state.posX - current.x) * t,
-        current.y + (state.posY - current.y) * t,
+        attached ? targetY : current.y + (targetY - current.y) * t,
         current.z + (state.posZ - current.z) * t,
       );
+
+      // Cache attachedTo on the model for getAllPositions()
+      model._attachedTo = state.attachedTo || null;
 
       // Smooth rotation via shortest path
       let deltaRot = state.rotationY - model.group.rotation.y;
@@ -114,13 +147,23 @@ export class RemotePlayerManager {
 
   /**
    * Get all remote player positions for client-side collision detection.
-   * @returns {Array<{posX:number, posY:number, posZ:number}>}
+   * Each entry includes the player's ID and attachedTo state so the caller
+   * can skip horizontal push when a remote player is standing on the local
+   * player's head.
+   *
+   * @returns {Array<{id:string, posX:number, posY:number, posZ:number, attachedTo:string|null}>}
    */
   getAllPositions() {
     const positions = [];
-    for (const model of this._models.values()) {
+    for (const [playerId, model] of this._models) {
       const pos = model.group.position;
-      positions.push({ posX: pos.x, posY: pos.y, posZ: pos.z });
+      positions.push({
+        id: playerId,
+        posX: pos.x,
+        posY: pos.y,
+        posZ: pos.z,
+        attachedTo: model._attachedTo || null,
+      });
     }
     return positions;
   }

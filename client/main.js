@@ -16,6 +16,7 @@ import { RemotePlayerManager } from './net/RemotePlayerManager.js';
 import { UIManager } from './ui/UIManager.js';
 import { ChatManager } from './ui/ChatManager.js';
 import { createJoinMessage, createPlayerStateMessage } from '../shared/messages.js';
+import { getPresetById } from '../shared/constants.js';
 import { pushLocalPlayerOutOfRemotePlayers, checkPlayerOnAnyPlayer } from '../shared/physics.js';
 
 // ============================================================
@@ -40,9 +41,11 @@ window.addEventListener('resize', () => {
 });
 
 // ============================================================
-// Lego Character
+// Lego Character (initialized with saved or default preset)
 // ============================================================
-const lego = new LegoCharacter();
+const savedCharId = localStorage.getItem('voxellab_character') || 'classic';
+const defaultPreset = getPresetById(savedCharId);
+const lego = new LegoCharacter(defaultPreset);
 lego.group.position.set(0, 0, 0);
 scene.add(lego.group);
 lego.play('idle');
@@ -108,6 +111,20 @@ const colorPicker = new ColorPicker(renderer.domElement);
 // ============================================================
 const uiManager = new UIManager();
 
+/**
+ * Currently selected character preset ID.
+ * Updated when user clicks a character card on the menu.
+ * @type {string}
+ */
+let selectedCharacterId = uiManager.getSelectedCharacterId();
+
+// Live preview: update the 3D character when user picks a preset
+uiManager.onCharacterSelect((presetId) => {
+  const preset = getPresetById(presetId);
+  lego.setColors(preset);
+  selectedCharacterId = presetId;
+});
+
 // ============================================================
 // Chat Manager
 // ============================================================
@@ -172,8 +189,8 @@ function joinMultiplayerWorld(worldId, nickname) {
   });
 
   networkClient.onOpen(() => {
-    networkClient.send(createJoinMessage(worldId, nickname));
-    console.log(`[main] Joining world "${worldId}" as "${nickname}"...`);
+    networkClient.send(createJoinMessage(worldId, nickname, selectedCharacterId));
+    console.log(`[main] Joining world "${worldId}" as "${nickname}" with char "${selectedCharacterId}"...`);
   });
 
   // Connect
@@ -386,8 +403,8 @@ function handleWorldState(msg) {
   // Create remote player models
   for (const p of msg.players) {
     if (p.id === stateManager.localPlayerId) continue;
-    stateManager.addPlayer(p.id, p.nickname, p.color);
-    remotePlayerManager.addPlayer(p.id, p.nickname, p.color);
+    stateManager.addPlayer(p.id, p.nickname, p.characterId);
+    remotePlayerManager.addPlayer(p.id, p.nickname, p.characterId);
   }
 
   // Create interaction manager if not yet created
@@ -407,8 +424,8 @@ function handleWorldState(msg) {
 
 function handlePlayerJoined(msg) {
   console.log(`[main] Player joined: "${msg.nickname}" (${msg.id})`);
-  stateManager.addPlayer(msg.id, msg.nickname, msg.color);
-  remotePlayerManager.addPlayer(msg.id, msg.nickname, msg.color);
+  stateManager.addPlayer(msg.id, msg.nickname, msg.characterId);
+  remotePlayerManager.addPlayer(msg.id, msg.nickname, msg.characterId);
   if (isMultiplayer) {
     uiManager.updateHUD(stateManager.worldId || '', remotePlayerManager.count + 1);
   }
@@ -515,8 +532,31 @@ if (isOfflineMode) {
 // Game Loop
 // ============================================================
 let prevTime = performance.now();
+// Initialize lastFrameTime so the first rAF callback always renders.
+// Using 1000/60 as a negative offset: time - (-16.67) = 16.67 >= 16.67 → passes.
+const FPS_60_INTERVAL = 1000 / 60; // ~16.67 ms
+let lastFrameTime = -FPS_60_INTERVAL;
 
-function animate() {
+function animate(time) {
+  requestAnimationFrame(animate);
+
+  // --- FPS limit: skip this frame if we're already at or above the target ---
+  const fpsLimit = controllerGUI.fpsLimit;
+  if (fpsLimit === '60Hz') {
+    if (time - lastFrameTime < FPS_60_INTERVAL) return;
+    // Advance by exactly one frame interval per render, instead of snapping
+    // to real time.  This maintains correct 60 Hz pacing across any display
+    // refresh rate (60/120/144 Hz) — the old "lastFrameTime = time" approach
+    // caused ~48 FPS on 144 Hz displays because rAF timings don't align
+    // cleanly with 16.67 ms boundaries.
+    lastFrameTime += FPS_60_INTERVAL;
+    // After a long pause (tab backgrounded), don't let lastFrameTime
+    // fall more than 3 frames behind, or we'd render a catch-up burst.
+    if (time - lastFrameTime >= FPS_60_INTERVAL) {
+      lastFrameTime = time - FPS_60_INTERVAL;
+    }
+  }
+
   const now = performance.now();
   const delta = Math.min((now - prevTime) / 1000, 0.1);
   prevTime = now;
@@ -540,7 +580,8 @@ function animate() {
   // immediate collision feedback. Server will reconcile if needed.
   if (remotePlayerManager && remotePlayerManager.count > 0) {
     const remotePositions = remotePlayerManager.getAllPositions();
-    pushLocalPlayerOutOfRemotePlayers(lego.group.position, remotePositions);
+    const localId = stateManager ? stateManager.localPlayerId : undefined;
+    pushLocalPlayerOutOfRemotePlayers(lego.group.position, remotePositions, localId);
 
     // Check if the player is standing on a remote player's head.
     // Uses proximity (not just active overlap) so we detect it even
@@ -569,8 +610,15 @@ function animate() {
   }
 
   // --- Remote player interpolation ---
+  // Pass the local player's Y and ID so RemotePlayerManager can apply
+  // Y-override for remote players vertically attached to the local player
+  // (bypasses 150ms interpolation delay for head-standing visuals).
   if (remotePlayerManager) {
-    remotePlayerManager.update(delta);
+    remotePlayerManager.update(
+      delta,
+      lego.group.position.y,
+      stateManager ? stateManager.localPlayerId : null,
+    );
   }
 
   // --- Camera controller ---
@@ -585,4 +633,6 @@ function animate() {
   stats.end();
 }
 
-renderer.setAnimationLoop(animate);
+// Start the manual rAF loop (replaces renderer.setAnimationLoop so we can
+// throttle frames independently of the browser's vsync / refresh rate).
+requestAnimationFrame(animate);

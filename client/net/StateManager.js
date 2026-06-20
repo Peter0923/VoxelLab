@@ -34,8 +34,8 @@ export class StateManager {
 
     // --- Remote player state ---
     /**
-     * Map of playerId → basic info (nickname, color).
-     * @type {Map<string, {nickname:string, color:{r:number,g:number,b:number}}>}
+     * Map of playerId → basic info (nickname, characterId).
+     * @type {Map<string, {nickname:string, characterId:string}>}
      */
     this._playerInfo = new Map();
 
@@ -140,10 +140,10 @@ export class StateManager {
    * Store info for a remote player.
    * @param {string} playerId
    * @param {string} nickname
-   * @param {{r:number,g:number,b:number}} color
+   * @param {string} [characterId='classic']
    */
-  addPlayer(playerId, nickname, color) {
-    this._playerInfo.set(playerId, { nickname, color: color || { r: 0.8, g: 0.3, b: 0.3 } });
+  addPlayer(playerId, nickname, characterId) {
+    this._playerInfo.set(playerId, { nickname, characterId: characterId || 'classic' });
     this._stateBuffers.set(playerId, []);
   }
 
@@ -167,13 +167,13 @@ export class StateManager {
   }
 
   /**
-   * Get color for a player.
+   * Get character preset ID for a player.
    * @param {string} playerId
-   * @returns {{r:number,g:number,b:number}}
+   * @returns {string}
    */
-  getPlayerColor(playerId) {
+  getPlayerCharacterId(playerId) {
     const info = this._playerInfo.get(playerId);
-    return info ? info.color : { r: 0.8, g: 0.3, b: 0.3 };
+    return info ? info.characterId : 'classic';
   }
 
   /**
@@ -213,6 +213,7 @@ export class StateManager {
         isGrounded: s.isGrounded,
         anim: s.anim || 'idle',
         timestamp: timestamp,
+        attachedTo: s.attachedTo || null,
       });
 
       // Ring buffer: keep last 5 (survives up to 2 dropped packets at 20Hz)
@@ -277,6 +278,7 @@ export class StateManager {
       anim: to.anim || from.anim || 'idle',
       isGrounded: to.isGrounded,
       velocityY: to.velocityY,
+      attachedTo: to.attachedTo || null,
     };
   }
 

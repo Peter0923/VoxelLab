@@ -72,10 +72,11 @@ export function createDiscoverMessage() {
  * Create a join message.
  * @param {string} worldId
  * @param {string} nickname
- * @returns {{type: string, worldId: string, nickname: string}}
+ * @param {string} [characterId='classic']
+ * @returns {{type: string, worldId: string, nickname: string, characterId: string}}
  */
-export function createJoinMessage(worldId, nickname) {
-  return { type: JOIN, worldId, nickname };
+export function createJoinMessage(worldId, nickname, characterId = 'classic') {
+  return { type: JOIN, worldId, nickname, characterId };
 }
 
 /**

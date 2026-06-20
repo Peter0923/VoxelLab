@@ -42,3 +42,52 @@ export const MAX_DELTA = 0.1;                   // Cap delta to prevent speed ha
 // --- Chat ---
 export const CHAT_MAX_MESSAGES = 5;             // Max visible messages in chat area
 export const CHAT_FADE_TIME_MS = 10000;         // Messages auto-fade after this many ms
+
+// --- Character presets ---
+export const CHARACTER_PRESETS = [
+  {
+    id: 'classic',
+    name: 'Classic',
+    shirt:  { r: 0.800, g: 0.133, b: 0.133 },
+    pants:  { r: 0.133, g: 0.267, b: 0.667 },
+    shoes:  { r: 0.133, g: 0.133, b: 0.133 },
+    skin:   { r: 0.992, g: 0.851, b: 0.710 },
+    hair:   { r: 0.333, g: 0.200, b: 0.067 },
+  },
+  {
+    id: 'athlete',
+    name: 'Athlete',
+    shirt:  { r: 0.133, g: 0.667, b: 0.267 },
+    pants:  { r: 0.200, g: 0.200, b: 0.200 },
+    shoes:  { r: 0.933, g: 0.933, b: 0.933 },
+    skin:   { r: 0.859, g: 0.682, b: 0.510 },
+    hair:   { r: 0.867, g: 0.667, b: 0.200 },
+  },
+  {
+    id: 'punk',
+    name: 'Punk',
+    shirt:  { r: 0.600, g: 0.133, b: 0.800 },
+    pants:  { r: 0.067, g: 0.067, b: 0.067 },
+    shoes:  { r: 0.867, g: 0.133, b: 0.133 },
+    skin:   { r: 0.910, g: 0.835, b: 0.718 },
+    hair:   { r: 0.067, g: 0.067, b: 0.067 },
+  },
+  {
+    id: 'explorer',
+    name: 'Explorer',
+    shirt:  { r: 0.867, g: 0.533, b: 0.133 },
+    pants:  { r: 0.545, g: 0.431, b: 0.306 },
+    shoes:  { r: 0.333, g: 0.200, b: 0.067 },
+    skin:   { r: 0.545, g: 0.416, b: 0.306 },
+    hair:   { r: 0.533, g: 0.533, b: 0.533 },
+  },
+];
+
+/**
+ * Get a character preset by ID.
+ * @param {string} id
+ * @returns {object} The full preset object
+ */
+export function getPresetById(id) {
+  return CHARACTER_PRESETS.find(p => p.id === id) || CHARACTER_PRESETS[0];
+}

@@ -1,3 +1,5 @@
+import { CHARACTER_PRESETS } from '../../shared/constants.js';
+
 /**
  * Manages DOM overlays: main menu, HUD, disconnect message.
  *
@@ -15,6 +17,9 @@ export class UIManager {
     this._onJoinCallback = null;
     this._onRefreshCallback = null;
     this._onOfflineCallback = null;
+    this._onCharacterSelectCallback = null;
+    this._selectedCharacterId = localStorage.getItem('voxellab_character') || 'classic';
+    this._facePreviewCanvas = null;
 
     this._createMenuOverlay();
     this._createHUD();
@@ -40,6 +45,11 @@ export class UIManager {
         </div>
 
         <div class="menu-section">
+          <label class="menu-label">Choose Your Character</label>
+          <div id="character-grid" class="character-grid"></div>
+        </div>
+
+        <div class="menu-section">
           <button id="btn-create-world" class="menu-btn menu-btn-primary">Create New World</button>
         </div>
 
@@ -60,6 +70,11 @@ export class UIManager {
           Start server first: <code>npm run server</code>
         </p>
       </div>
+
+      <div id="face-preview">
+        <canvas width="170" height="200"></canvas>
+        <div class="face-preview-name">—</div>
+      </div>
     `;
     document.body.appendChild(overlay);
     this._menuOverlay = overlay;
@@ -67,6 +82,8 @@ export class UIManager {
     // Cache elements
     this._nicknameInput = overlay.querySelector('#nickname-input');
     this._worldListTable = overlay.querySelector('#world-list-container');
+    this._facePreviewCanvas = overlay.querySelector('#face-preview canvas');
+    this._facePreviewName = overlay.querySelector('.face-preview-name');
 
     // Restore nickname from localStorage
     const savedNick = localStorage.getItem('voxellab_nickname');
@@ -98,6 +115,178 @@ export class UIManager {
         this._onOfflineCallback();
       }
     });
+
+    // Build character selection cards
+    this._createCharacterCards();
+
+    // Draw initial face preview
+    const initialPreset = CHARACTER_PRESETS.find(p => p.id === this._selectedCharacterId) || CHARACTER_PRESETS[0];
+    this._updateFacePreview(initialPreset);
+  }
+
+  /**
+   * Build the 4 preset character selection cards inside #character-grid.
+   */
+  _createCharacterCards() {
+    const grid = this._menuOverlay.querySelector('#character-grid');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+
+    for (const preset of CHARACTER_PRESETS) {
+      const card = document.createElement('button');
+      card.className = 'character-card';
+      card.dataset.presetId = preset.id;
+
+      // Mark as selected if this is the current choice
+      if (preset.id === this._selectedCharacterId) {
+        card.classList.add('selected');
+      }
+
+      const rgb = (c) => `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})`;
+
+      card.innerHTML = `
+        <div class="character-card-name">${preset.name}</div>
+        <div class="character-card-swatches">
+          <span class="color-swatch" style="background:${rgb(preset.shirt)}"></span>
+          <span class="color-swatch" style="background:${rgb(preset.pants)}"></span>
+          <span class="color-swatch" style="background:${rgb(preset.shoes)}"></span>
+          <span class="color-swatch" style="background:${rgb(preset.skin)}"></span>
+          <span class="color-swatch" style="background:${rgb(preset.hair)}"></span>
+        </div>
+      `;
+
+      card.addEventListener('click', () => {
+        this._selectedCharacterId = preset.id;
+        localStorage.setItem('voxellab_character', preset.id);
+
+        // Update card highlights
+        const cards = grid.querySelectorAll('.character-card');
+        for (const c of cards) {
+          c.classList.toggle('selected', c.dataset.presetId === preset.id);
+        }
+
+        // Update face preview
+        this._updateFacePreview(preset);
+
+        // Fire callback for live 3D preview
+        if (this._onCharacterSelectCallback) {
+          this._onCharacterSelectCallback(preset.id);
+        }
+      });
+
+      grid.appendChild(card);
+    }
+  }
+
+  /**
+   * Draw a polaroid-style face portrait on the preview canvas.
+   * @param {object} preset - The character preset {id, name, shirt, pants, shoes, skin, hair}
+   */
+  _updateFacePreview(preset) {
+    if (!this._facePreviewCanvas) return;
+
+    const canvas = this._facePreviewCanvas;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;   // 170
+    const H = canvas.height;  // 200
+    const cx = W / 2;         // center x = 85
+
+    ctx.clearRect(0, 0, W, H);
+
+    const css = (c) => `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})`;
+    const skin = css(preset.skin);
+    const hair = css(preset.hair);
+    const shirt = css(preset.shirt);
+
+    // --- Background glow ---
+    const bg = ctx.createRadialGradient(cx, 100, 20, cx, 100, 110);
+    bg.addColorStop(0, 'rgba(100, 140, 255, 0.08)');
+    bg.addColorStop(1, 'rgba(100, 140, 255, 0)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // --- Hair (bulky lego-style top) ---
+    // Bushy top
+    ctx.fillStyle = hair;
+    ctx.beginPath();
+    ctx.ellipse(cx, 38, 48, 20, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+
+    // Left side hair
+    ctx.fillRect(cx - 48, 28, 14, 40);
+
+    // Right side hair
+    ctx.fillRect(cx + 34, 28, 14, 40);
+
+    // Top tuft
+    ctx.beginPath();
+    ctx.ellipse(cx, 24, 30, 14, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+
+    // --- Face oval ---
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(cx, 72, 36, 44, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- Eyes (lego stud style — small dots) ---
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(cx - 14, 64, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx + 14, 64, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eye highlight (makes them look alive)
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(cx - 16, 62, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx + 12, 62, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- Cheek blush ---
+    ctx.fillStyle = 'rgba(255, 140, 140, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(cx - 24, 80, 7, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx + 24, 80, 7, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- Smile ---
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, 76, 12, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.stroke();
+
+    // --- Shirt collar ---
+    ctx.fillStyle = shirt;
+    ctx.beginPath();
+    ctx.moveTo(cx - 30, 110);
+    ctx.lineTo(cx + 30, 110);
+    ctx.lineTo(cx + 38, 140);
+    ctx.lineTo(cx - 38, 140);
+    ctx.closePath();
+    ctx.fill();
+
+    // Collar detail
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+    ctx.beginPath();
+    ctx.moveTo(cx, 110);
+    ctx.lineTo(cx - 8, 130);
+    ctx.lineTo(cx + 8, 130);
+    ctx.closePath();
+    ctx.fill();
+
+    // --- Label ---
+    if (this._facePreviewName) {
+      this._facePreviewName.textContent = preset.name;
+    }
   }
 
   /**
@@ -340,6 +529,22 @@ export class UIManager {
    */
   onOffline(callback) {
     this._onOfflineCallback = callback;
+  }
+
+  /**
+   * Set the callback for when the user selects a character preset.
+   * @param {function(string):void} callback - Receives the preset ID
+   */
+  onCharacterSelect(callback) {
+    this._onCharacterSelectCallback = callback;
+  }
+
+  /**
+   * Get the currently selected character preset ID.
+   * @returns {string}
+   */
+  getSelectedCharacterId() {
+    return this._selectedCharacterId;
   }
 
   // ============================================================
