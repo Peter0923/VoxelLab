@@ -7,11 +7,11 @@
     "ws": "^8.18.0"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview",
     "server": "node server/server.js",
-    "dev:all": "node server/server.js & vite"
+    "dev:all": "node server/server.js & vite --host"
   },
   "devDependencies": {
     "playwright": "^1.60.0",
