@@ -4,12 +4,29 @@ import * as THREE from 'three';
  * Creates a lego minifigure with built-in animations:
  * - idle, walkForward, walkBackward, walkLeft, walkRight, jump
  */
+/**
+ * Convert {r,g,b} float (0-1) to hex number for Three.js color.
+ * @param {{r:number,g:number,b:number}} c
+ * @returns {number} 0xRRGGBB
+ */
+function rgbToHex(c) {
+  if (c === undefined || c === null) return 0xfdd9b5;
+  const r = Math.round(c.r * 255);
+  const g = Math.round(c.g * 255);
+  const b = Math.round(c.b * 255);
+  return (r << 16) | (g << 8) | b;
+}
+
 export class LegoCharacter {
-  constructor() {
+  /**
+   * @param {object} [colors] - Optional preset colors {shirt, pants, shoes, skin, hair}
+   */
+  constructor(colors) {
     this.group = new THREE.Group();
     this.mixer = null;
     this.animations = {};
     this.currentAction = null;
+    this._colors = colors || null;
     this._build();
     this._createAnimations();
   }
@@ -20,11 +37,12 @@ export class LegoCharacter {
     this.group.add(this.visualGroup);
     const group = this.visualGroup;
 
-    // --- Colors ---
-    const skinColor = 0xfdd9b5;
-    const pantsColor = 0x2244aa;
-    const shirtColor = 0xcc2222;
-    const shoeColor = 0x222222;
+    // --- Colors (from preset or defaults) ---
+    const skinColor = this._colors ? rgbToHex(this._colors.skin) : 0xfdd9b5;
+    const pantsColor = this._colors ? rgbToHex(this._colors.pants) : 0x2244aa;
+    const shirtColor = this._colors ? rgbToHex(this._colors.shirt) : 0xcc2222;
+    const shoeColor = this._colors ? rgbToHex(this._colors.shoes) : 0x222222;
+    const hairHex = this._colors ? rgbToHex(this._colors.hair) : 0x553311;
 
     // Offset so feet touch y=0 ground plane.
     // Feet bottom is at y=0.25 relative to group, so shift everything down by 0.25.
@@ -39,7 +57,7 @@ export class LegoCharacter {
     group.add(head);
 
     // Hair on top and back of head
-    const hairMat = new THREE.MeshStandardMaterial({ color: 0x553311 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: hairHex });
 
     // Top hair — cylinder piece like a lego hair accessory
     const topHair = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 0.15, 16), hairMat);
@@ -298,5 +316,34 @@ export class LegoCharacter {
     if (this.mixer) {
       this.mixer.update(delta);
     }
+  }
+
+  /**
+   * Swap to a different color preset and rebuild the character mesh.
+   * Called during character selection preview or on game start.
+   * @param {object} colors - Preset colors {shirt, pants, shoes, skin, hair}
+   */
+  setColors(colors) {
+    // Remove old visual group and dispose its resources
+    if (this.visualGroup) {
+      this.visualGroup.traverse((child) => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (child.material.map) child.material.map.dispose();
+          child.material.dispose();
+        }
+      });
+      this.group.remove(this.visualGroup);
+      this.visualGroup = null;
+    }
+
+    // Set new colors and rebuild
+    this._colors = colors;
+    this._build();
+
+    // Rebuild animations (replaces old mixer)
+    this._createAnimations();
+    this.currentAction = null;
+    this.play('idle');
   }
 }

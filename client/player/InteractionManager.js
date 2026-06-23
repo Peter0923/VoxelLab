@@ -1,20 +1,27 @@
-import { VoxelRaycaster } from './VoxelRaycaster.js';
+import { VoxelRaycaster } from '../world/VoxelRaycaster.js';
 import { CharacterController } from './CharacterController.js';
+import { MAX_RAY_DISTANCE, GROUND_SIZE } from '../../shared/constants.js';
 
-const GROUND_SIZE = 50;
-const MAX_RAY_DISTANCE = 80;
-
+/**
+ * Handles mouse/touch interaction for placing and removing cubes.
+ *
+ * In multiplayer mode, after a successful local block operation (optimistic),
+ * the action is sent to the server via NetworkClient. The server echoes it back
+ * to all clients — the sender ignores its own echoed operations via
+ * `_lastLocalBlockOp` tracking.
+ */
 export class InteractionManager {
   /**
    * @param {HTMLElement} domElement
    * @param {THREE.Camera} camera
    * @param {import('./CubeManager.js').CubeManager} cubeManager
-   * @param {import('./WorldMap.js').WorldMap} worldMap
-   * @param {import('./ControllerGUI.js').ControllerGUI} controllerGUI
-   * @param {import('../LegoCharacter.js').LegoCharacter} legoCharacter
-   * @param {import('./ColorPicker.js').ColorPicker} [colorPicker]
+   * @param {import('../../shared/WorldMap.js').WorldMap} worldMap
+   * @param {import('../ui/ControllerGUI.js').ControllerGUI} controllerGUI
+   * @param {import('./LegoCharacter.js').LegoCharacter} legoCharacter
+   * @param {import('../ui/ColorPicker.js').ColorPicker} [colorPicker]
+   * @param {import('../net/NetworkClient.js').NetworkClient} [networkClient] - For multiplayer block sync
    */
-  constructor(domElement, camera, cubeManager, worldMap, controllerGUI, legoCharacter, colorPicker) {
+  constructor(domElement, camera, cubeManager, worldMap, controllerGUI, legoCharacter, colorPicker, networkClient) {
     this._dom = domElement;
     this._camera = camera;
     this._cubeMgr = cubeManager;
@@ -22,9 +29,19 @@ export class InteractionManager {
     this._ctrlGUI = controllerGUI;
     this._lego = legoCharacter;
     this._colorPicker = colorPicker;
+    this._networkClient = networkClient || null;
+
     this._pointerMoved = false;
     this._downPos = { x: 0, y: 0 };
     this._deadzone = 3; // px — prevent orbit micro-movements from canceling clicks
+
+    /**
+     * Last local block operation for server-echo idempotency.
+     * When the server echoes back our own blockPlaced/blockRemoved,
+     * we compare with this and skip if it matches.
+     * @type {{x:number, y:number, z:number, type:string, timestamp:number}|null}
+     */
+    this.lastLocalBlockOp = null;
 
     this._onPointerDown = (e) => {
       if (e.button === 0 || e.button === 2) {
@@ -49,7 +66,7 @@ export class InteractionManager {
       // In Follow mode there is no visible crosshair — disable cube placement/removal
       if (this._ctrlGUI.currentName === 'Follow') return;
 
-      // In pointer-lock modes (FPS, Follow), skip if pointer isn't locked yet (the click is locking it)
+      // In pointer-lock modes (FPS, Follow), skip if pointer isn't locked yet
       if (this._isPointerLock() && document.pointerLockElement !== this._dom) return;
 
       const pointerLock = this._isPointerLock();
@@ -60,9 +77,10 @@ export class InteractionManager {
 
       const hit = VoxelRaycaster.raycast(origin, direction, this._worldMap, MAX_RAY_DISTANCE);
 
+      // Right-click or Ctrl+Left-click: remove block
       if (e.button === 2 || (e.button === 0 && e.ctrlKey)) {
         if (hit) {
-          this._cubeMgr.removeCubeAt(hit.cubeX, hit.cubeY, hit.cubeZ);
+          this._removeCube(hit.cubeX, hit.cubeY, hit.cubeZ);
         }
         return;
       }
@@ -91,15 +109,39 @@ export class InteractionManager {
   }
 
   /**
-   * Place a cube at (x, y, z). Uses the color picker's selected color if set,
-   * otherwise falls back to random color.
+   * Place a cube at (x, y, z). Applies optimistically, then sends to server.
    */
   _placeCube(x, y, z) {
-    const color = this._colorPicker ? this._colorPicker.getSelectedColor() : null;
-    if (color) {
-      this._cubeMgr.addCubeWithColor(x, y, z, color.r, color.g, color.b);
+    // Determine color
+    let r, g, b;
+    if (this._colorPicker) {
+      const color = this._colorPicker.getSelectedColor();
+      if (color) {
+        r = color.r; g = color.g; b = color.b;
+      } else {
+        r = Math.random(); g = Math.random(); b = Math.random();
+      }
     } else {
-      this._cubeMgr.addCube(x, y, z);
+      r = Math.random(); g = Math.random(); b = Math.random();
+    }
+
+    const placed = this._cubeMgr.addCubeWithColor(x, y, z, r, g, b);
+    if (placed && this._networkClient && this._networkClient.connected) {
+      // Track for idempotency
+      this.lastLocalBlockOp = { x, y, z, type: 'place', timestamp: performance.now() };
+      // Send to server
+      this._networkClient.send({ type: 'placeBlock', x, y, z, r, g, b });
+    }
+  }
+
+  /**
+   * Remove a cube at (x, y, z). Applies optimistically, then sends to server.
+   */
+  _removeCube(x, y, z) {
+    const removed = this._cubeMgr.removeCubeAt(x, y, z);
+    if (removed && this._networkClient && this._networkClient.connected) {
+      this.lastLocalBlockOp = { x, y, z, type: 'remove', timestamp: performance.now() };
+      this._networkClient.send({ type: 'removeBlock', x, y, z });
     }
   }
 

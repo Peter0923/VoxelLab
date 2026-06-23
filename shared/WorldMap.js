@@ -5,6 +5,9 @@
  * world positions via Math.floor(x), Math.floor(y), Math.floor(z).
  *
  * Provides O(1) lookup for whether a block is occupied by a cube.
+ *
+ * This module is pure JavaScript with no Three.js dependencies — it can be
+ * imported identically by both the browser client and the Node.js server.
  */
 export class WorldMap {
   constructor() {
@@ -59,5 +62,24 @@ export class WorldMap {
    */
   clear() {
     this._map.clear();
+  }
+
+  /**
+   * Get the number of occupied blocks.
+   * @returns {number}
+   */
+  get size() {
+    return this._map.size;
+  }
+
+  /**
+   * Iterate over all occupied block coordinates.
+   * Yields {bx, by, bz} objects.
+   */
+  *entries() {
+    for (const key of this._map.keys()) {
+      const [bx, by, bz] = key.split(',').map(Number);
+      yield { bx, by, bz };
+    }
   }
 }

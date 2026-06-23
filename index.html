@@ -2,12 +2,377 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>threejs lab</title>
+    <title>VoxelLab</title>
     <style>
-      body { margin: 0; }
+      /* --- Base --- */
+      body {
+        margin: 0;
+        overflow: hidden;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        background: #111122;
+      }
+
+      /* --- Main Menu Overlay --- */
+      #menu-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 2rem;
+        background: rgba(5, 5, 20, 0.92);
+        z-index: 1000;
+        color: #e0e0ff;
+      }
+
+      .menu-container {
+        text-align: center;
+        max-width: 420px;
+        width: 90%;
+        padding: 2rem;
+        background: rgba(20, 20, 60, 0.85);
+        border: 1px solid rgba(100, 120, 200, 0.3);
+        border-radius: 12px;
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+      }
+
+      .menu-title {
+        font-size: 2.5rem;
+        font-weight: 800;
+        letter-spacing: 0.15em;
+        color: #8899ff;
+        margin: 0 0 0.25rem 0;
+        text-shadow: 0 0 20px rgba(100, 140, 255, 0.4);
+      }
+
+      .menu-subtitle {
+        font-size: 0.9rem;
+        color: #6677aa;
+        margin: 0 0 2rem 0;
+      }
+
+      .menu-section {
+        margin: 1rem 0;
+      }
+
+      .menu-label {
+        display: block;
+        text-align: left;
+        font-size: 0.8rem;
+        color: #8899cc;
+        margin-bottom: 0.3rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .menu-input {
+        width: 100%;
+        padding: 0.6rem 0.8rem;
+        border: 1px solid rgba(100, 120, 200, 0.4);
+        border-radius: 6px;
+        background: rgba(10, 10, 40, 0.7);
+        color: #e0e0ff;
+        font-size: 1rem;
+        box-sizing: border-box;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+
+      .menu-input:focus {
+        border-color: #6688ff;
+      }
+
+      .menu-btn {
+        display: inline-block;
+        padding: 0.6rem 1.5rem;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-family: inherit;
+      }
+
+      .menu-btn-primary {
+        background: #3355cc;
+        color: #fff;
+        border-color: #4466dd;
+        width: 100%;
+      }
+
+      .menu-btn-primary:hover {
+        background: #4466dd;
+      }
+
+      .menu-btn-secondary {
+        background: rgba(40, 40, 80, 0.6);
+        color: #aabbdd;
+        border-color: rgba(100, 120, 200, 0.3);
+        width: 100%;
+      }
+
+      .menu-btn-secondary:hover {
+        background: rgba(60, 60, 120, 0.6);
+        color: #ccddff;
+      }
+
+      .menu-btn-small {
+        background: #3355cc;
+        color: #fff;
+        padding: 0.3rem 0.8rem;
+        font-size: 0.8rem;
+        border-radius: 4px;
+      }
+
+      .menu-btn-small:hover {
+        background: #4466dd;
+      }
+
+      .menu-divider {
+        display: flex;
+        align-items: center;
+        margin: 1rem 0;
+        color: #556688;
+        font-size: 0.8rem;
+      }
+
+      .menu-divider::before,
+      .menu-divider::after {
+        content: '';
+        flex: 1;
+        border-bottom: 1px solid rgba(100, 120, 200, 0.2);
+      }
+
+      .menu-divider span {
+        padding: 0 1rem;
+      }
+
+      .menu-hint {
+        color: #556688;
+        font-size: 0.85rem;
+        margin: 0.5rem 0;
+      }
+
+      .menu-hint code {
+        background: rgba(100, 120, 200, 0.15);
+        padding: 0.15rem 0.4rem;
+        border-radius: 3px;
+        font-size: 0.85em;
+      }
+
+      /* --- World List Table --- */
+      .world-list-container {
+        max-height: 200px;
+        overflow-y: auto;
+        margin: 0.5rem 0;
+        text-align: left;
+      }
+
+      .world-list-container::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .world-list-container::-webkit-scrollbar-thumb {
+        background: rgba(100, 120, 200, 0.3);
+        border-radius: 3px;
+      }
+
+      .world-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+
+      .world-table th {
+        text-align: left;
+        padding: 0.4rem 0.5rem;
+        color: #6677aa;
+        font-weight: 600;
+        border-bottom: 1px solid rgba(100, 120, 200, 0.2);
+      }
+
+      .world-table td {
+        padding: 0.4rem 0.5rem;
+        color: #ccddff;
+        border-bottom: 1px solid rgba(100, 120, 200, 0.1);
+      }
+
+      .world-table tr:hover td {
+        background: rgba(60, 80, 180, 0.15);
+      }
+
+      /* --- HUD --- */
+      #hud {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        pointer-events: none;
+        z-index: 100;
+        display: none;
+      }
+
+      .hud-top-left {
+        position: absolute;
+        top: 10px;
+        left: 80px; /* leave room for stats.js */
+        pointer-events: none;
+      }
+
+      .hud-world-name {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #8899ff;
+        text-shadow: 0 0 8px rgba(100, 140, 255, 0.4);
+        margin-right: 1rem;
+      }
+
+      .hud-player-count {
+        font-size: 0.85rem;
+        color: #6677aa;
+      }
+
+      /* --- Chat --- */
+      .chat-area {
+        position: absolute;
+        bottom: 60px;
+        left: 10px;
+        width: 350px;
+        max-height: 200px;
+        overflow-y: auto;
+        pointer-events: none;
+        font-size: 0.85rem;
+      }
+
+      .chat-message {
+        color: #ddeeff;
+        padding: 2px 0;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+        word-wrap: break-word;
+      }
+
+      .chat-nickname {
+        color: #8899ff;
+        font-weight: 600;
+      }
+
+      .chat-input {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 400px;
+        max-width: 80vw;
+        padding: 0.5rem 0.8rem;
+        border: 1px solid rgba(100, 120, 200, 0.5);
+        border-radius: 6px;
+        background: rgba(10, 10, 40, 0.85);
+        color: #e0e0ff;
+        font-size: 0.9rem;
+        font-family: inherit;
+        outline: none;
+        display: none;
+        pointer-events: all;
+        z-index: 200;
+      }
+
+      .chat-input:focus {
+        border-color: #6688ff;
+      }
+
+      /* --- Disconnect Overlay --- */
+      .disconnect-overlay {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(200, 50, 50, 0.9);
+        color: #fff;
+        padding: 1rem 2rem;
+        border-radius: 8px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        z-index: 2000;
+        pointer-events: none;
+      }
+      /* --- Character Selection --- */
+      .character-grid {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin: 0.5rem 0;
+      }
+
+      .character-card {
+        flex: 1;
+        max-width: 90px;
+        padding: 8px 4px;
+        background: rgba(30, 30, 70, 0.6);
+        border: 2px solid rgba(100, 120, 200, 0.3);
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.2s;
+        color: #aabbdd;
+        font-size: 0.75rem;
+        font-family: inherit;
+      }
+
+      .character-card:hover {
+        background: rgba(60, 60, 120, 0.6);
+        border-color: rgba(100, 140, 255, 0.5);
+      }
+
+      .character-card.selected {
+        border-color: #6688ff;
+        background: rgba(60, 80, 180, 0.3);
+        color: #ccddff;
+        box-shadow: 0 0 10px rgba(100, 140, 255, 0.3);
+      }
+
+      .character-card-name {
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+
+      .character-card-swatches {
+        display: flex;
+        gap: 2px;
+        justify-content: center;
+      }
+
+      .color-swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        display: inline-block;
+      }
+
+      /* --- Face Preview --- */
+      #face-preview {
+        width: 200px;
+        text-align: center;
+        background: rgba(20, 20, 60, 0.85);
+        border: 1px solid rgba(100, 120, 200, 0.3);
+        border-radius: 12px;
+        padding: 1rem 1rem 0.75rem;
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+      }
+
+      #face-preview canvas {
+        display: block;
+        margin: 0 auto;
+        border-radius: 6px;
+      }
+
+      .face-preview-name {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #8899cc;
+        margin-top: 0.5rem;
+      }
     </style>
   </head>
   <body>
-    <script type="module" src="/main.js"></script>
+    <script type="module" src="/client/main.js"></script>
   </body>
 </html>

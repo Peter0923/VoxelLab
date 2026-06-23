@@ -5,6 +5,13 @@ import path from 'path';
 const SCENES_DIR = path.resolve('public', 'scenes');
 
 export default defineConfig({
+  server: {
+    proxy: {
+      // Proxy world/health API requests to the game server
+      '/api/worlds': 'http://localhost:3001',
+      '/health': 'http://localhost:3001',
+    },
+  },
   plugins: [
     {
       name: 'scene-api',
