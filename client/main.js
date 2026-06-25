@@ -17,7 +17,7 @@ import { UIManager } from './ui/UIManager.js';
 import { ChatManager } from './ui/ChatManager.js';
 import { createJoinMessage, createPlayerStateMessage } from '../shared/messages.js';
 import { getPresetById } from '../shared/constants.js';
-import { pushLocalPlayerOutOfRemotePlayers, checkPlayerOnAnyPlayer } from '../shared/physics.js';
+import { checkPlayerOnAnyPlayer } from '../shared/physics.js';
 
 // ============================================================
 // Scene, Camera, Renderer
@@ -576,12 +576,12 @@ function animate(time) {
   }
 
   // --- Player-player collision (client-side prediction) ---
-  // Push local player out of any overlapping remote players for
-  // immediate collision feedback. Server will reconcile if needed.
+  // Only head-standing detection is done client-side for instant ground feel.
+  // Horizontal push is removed — the server resolves player-player overlaps
+  // authoritatively and reconciles the position, which is smoother than
+  // having client and server fight each other over the correction.
   if (remotePlayerManager && remotePlayerManager.count > 0) {
     const remotePositions = remotePlayerManager.getAllPositions();
-    const localId = stateManager ? stateManager.localPlayerId : undefined;
-    pushLocalPlayerOutOfRemotePlayers(lego.group.position, remotePositions, localId);
 
     // Check if the player is standing on a remote player's head.
     // Uses proximity (not just active overlap) so we detect it even
