@@ -17,6 +17,7 @@ export class UIManager {
     this._onJoinCallback = null;
     this._onRefreshCallback = null;
     this._onOfflineCallback = null;
+    this._onDeleteWorldCallback = null;
     this._onCharacterSelectCallback = null;
     this._selectedCharacterId = localStorage.getItem('voxellab_character') || 'classic';
     this._facePreviewCanvas = null;
@@ -338,27 +339,43 @@ export class UIManager {
       return;
     }
 
-    let html = '<table class="world-table"><thead><tr><th>World</th><th>Players</th><th>Cubes</th><th></th></tr></thead><tbody>';
+    let html = '<table class="world-table"><thead><tr><th>World</th><th>Players</th><th>Cubes</th><th></th><th></th></tr></thead><tbody>';
     for (const w of worlds) {
       html += `<tr>
         <td>${this._escapeHtml(w.name)}</td>
-        <td>${w.playerCount}/50</td>
+        <td>${w.playerCount}/10</td>
         <td>${w.cubeCount}</td>
-        <td><button class="menu-btn menu-btn-small" data-world-id="${this._escapeHtml(w.id)}">Join</button></td>
+        <td><button class="menu-btn menu-btn-join" data-world-id="${this._escapeHtml(w.id)}">Join</button></td>
+        <td><button class="menu-btn menu-btn-del menu-btn-danger" data-delete-world-id="${this._escapeHtml(w.id)}">Delete</button></td>
       </tr>`;
     }
     html += '</tbody></table>';
     this._worldListTable.innerHTML = html;
 
     // Wire up Join buttons
-    const buttons = this._worldListTable.querySelectorAll('button[data-world-id]');
-    for (const btn of buttons) {
+    const joinButtons = this._worldListTable.querySelectorAll('button[data-world-id]');
+    for (const btn of joinButtons) {
       btn.addEventListener('click', () => {
         const nickname = this._getNickname();
         if (!nickname) return;
         const worldId = btn.getAttribute('data-world-id');
         if (this._onJoinCallback && worldId) {
           this._onJoinCallback(worldId, nickname);
+        }
+      });
+    }
+
+    // Wire up Delete buttons
+    const deleteButtons = this._worldListTable.querySelectorAll('button[data-delete-world-id]');
+    for (const btn of deleteButtons) {
+      btn.addEventListener('click', () => {
+        const worldId = btn.getAttribute('data-delete-world-id');
+        const worldName = worldId; // display name is same as ID for now
+        if (!worldId) return;
+        if (confirm(`Delete world "${worldName}" and all its blocks? This cannot be undone.`)) {
+          if (this._onDeleteWorldCallback) {
+            this._onDeleteWorldCallback(worldId);
+          }
         }
       });
     }
@@ -529,6 +546,14 @@ export class UIManager {
    */
   onOffline(callback) {
     this._onOfflineCallback = callback;
+  }
+
+  /**
+   * Set the callback for when the user clicks "Delete" on a world.
+   * @param {function(string):void} callback - (worldId)
+   */
+  onDeleteWorld(callback) {
+    this._onDeleteWorldCallback = callback;
   }
 
   /**

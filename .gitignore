@@ -2,5 +2,6 @@
 dist/
 node_modules/
 public/scenes/
+data/
 .claude/
 CLAUDE.md

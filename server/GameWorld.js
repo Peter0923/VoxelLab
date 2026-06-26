@@ -32,11 +32,13 @@ export class GameWorld {
    * @param {string} worldId - Unique world identifier
    * @param {string} name - Display name
    * @param {function} onEmpty - Called when the world should be destroyed
+   * @param {import('./WorldDatabase.js').WorldDatabase} [db] - Database for persistence
    */
-  constructor(worldId, name, onEmpty) {
+  constructor(worldId, name, onEmpty, db) {
     this.id = worldId;
     this.name = name;
     this._onEmpty = onEmpty;
+    this._db = db || null;
 
     /** @type {WorldMap} Canonical block occupancy */
     this.worldMap = new WorldMap();
@@ -47,6 +49,9 @@ export class GameWorld {
      * Parallels the WorldMap entries for fast iteration during serialization.
      */
     this._cubes = new Map(); // Map<string, {x, y, z, r, g, b}>
+
+    // Load persisted blocks if this world already exists in the database
+    this._loadPersistedBlocks();
 
     /** @type {Map<string, Player>} */
     this.players = new Map();
@@ -64,6 +69,28 @@ export class GameWorld {
 
     // Start the tick loop
     this._startTick();
+  }
+
+  /**
+   * Load blocks from the database into memory.
+   * Called once during construction. If no database is configured or the
+   * world has no persisted blocks, this is a no-op.
+   */
+  _loadPersistedBlocks() {
+    if (!this._db) return;
+
+    const blocks = this._db.loadWorldBlocks(this.id);
+    for (const block of blocks) {
+      const { x, y, z, r, g, b } = block;
+      const bx = Math.floor(x);
+      const by = Math.floor(y);
+      const bz = Math.floor(z);
+      this.worldMap.place(bx, by, bz);
+      this._cubes.set(`${x},${y},${z}`, { x, y, z, r, g, b });
+    }
+    if (blocks.length > 0) {
+      console.log(`[world ${this.id}] Loaded ${blocks.length} persisted block(s) from database.`);
+    }
   }
 
   // --- Player Management ---
@@ -182,6 +209,15 @@ export class GameWorld {
     this.worldMap.place(bx, by, bz);
     this._cubes.set(`${x},${y},${z}`, { x, y, z, r, g, b });
 
+    // Persist to database
+    if (this._db) {
+      try {
+        this._db.saveBlock(this.id, x, y, z, r, g, b);
+      } catch (err) {
+        console.error(`[world ${this.id}] Failed to persist placed block at ${x},${y},${z}:`, err.message);
+      }
+    }
+
     // Broadcast to all
     this.broadcast({
       type: BLOCK_PLACED,
@@ -212,6 +248,15 @@ export class GameWorld {
 
     // Remove from map (O(1) by key)
     this._cubes.delete(`${x},${y},${z}`);
+
+    // Remove from database
+    if (this._db) {
+      try {
+        this._db.removeBlock(this.id, x, y, z);
+      } catch (err) {
+        console.error(`[world ${this.id}] Failed to persist block removal at ${x},${y},${z}:`, err.message);
+      }
+    }
 
     // Broadcast to all
     this.broadcast({

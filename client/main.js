@@ -310,7 +310,10 @@ uiManager.onJoin((worldId, nickname) => {
 });
 
 uiManager.onRefreshWorlds(() => {
-  // Fetch world list via Vite proxy (proxied to game server in dev, same-origin in prod)
+  refreshWorldList();
+});
+
+const refreshWorldList = () => {
   fetch('/api/worlds')
     .then(r => r.json())
     .then(data => {
@@ -320,10 +323,25 @@ uiManager.onRefreshWorlds(() => {
       uiManager.showWorldList([]);
       console.warn('[main] Could not reach server. Is "npm run server" running?');
     });
-});
+};
+
+// Initial refresh on load
+refreshWorldList();
 
 uiManager.onOffline(() => {
   startOfflineMode();
+});
+
+uiManager.onDeleteWorld((worldId) => {
+  fetch(`/api/worlds/${encodeURIComponent(worldId)}`, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(() => {
+      console.log(`[main] World "${worldId}" deleted.`);
+      refreshWorldList();
+    })
+    .catch((err) => {
+      console.error(`[main] Failed to delete world "${worldId}":`, err);
+    });
 });
 
 // Also allow skipping menu with URL param

@@ -1,5 +1,6 @@
 import { GameWorld } from './GameWorld.js';
 import { Player } from './Player.js';
+import { WorldDatabase } from './WorldDatabase.js';
 // Message type constants are referenced as string literals below
 // for clarity and to avoid import boilerplate.
 
@@ -22,6 +23,9 @@ export class WorldManager {
      * @type {Map<import('ws').WebSocket, {player: Player, worldId: string}>}
      */
     this._connections = new Map();
+
+    /** @type {WorldDatabase} Persistence layer for world data */
+    this._db = new WorldDatabase();
   }
 
   /**
@@ -78,14 +82,66 @@ export class WorldManager {
   }
 
   /**
+   * Get the merged world list: active (in-memory) worlds plus persisted
+   * (on-disk) worlds that aren't currently loaded.
+   *
+   * Active worlds take precedence — their playerCount and cubeCount reflect
+   * live data rather than the last-persisted snapshot.
+   *
+   * @returns {Array<{id:string, name:string, playerCount:number, cubeCount:number}>}
+   */
+  getWorldList() {
+    const worlds = [];
+    const loadedIds = new Set();
+
+    // Active (in-memory) worlds
+    for (const world of this._worlds.values()) {
+      worlds.push(world.getInfo());
+      loadedIds.add(world.id);
+    }
+
+    // Persisted (on-disk) worlds that aren't currently loaded
+    const persistedWorlds = this._db.getPersistedWorlds();
+    for (const pw of persistedWorlds) {
+      if (!loadedIds.has(pw.id)) {
+        worlds.push({
+          id: pw.id,
+          name: pw.name,
+          playerCount: 0,
+          cubeCount: pw.blockCount,
+        });
+      }
+    }
+
+    return worlds;
+  }
+
+  /**
+   * Permanently delete a world: remove from database and destroy
+   * in-memory instance if currently loaded.
+   *
+   * @param {string} worldId
+   */
+  deleteWorld(worldId) {
+    // Remove from database (blocks + world row)
+    this._db.deleteWorld(worldId);
+
+    // If the world is loaded in memory, destroy it
+    const world = this._worlds.get(worldId);
+    if (world) {
+      world.destroy();
+      this._worlds.delete(worldId);
+      console.log(`[server] World "${worldId}" removed from memory and database.`);
+    } else {
+      console.log(`[server] World "${worldId}" removed from database.`);
+    }
+  }
+
+  /**
    * Send the list of active worlds to a client.
    */
   _sendWorldList(ws) {
-    const worlds = [];
-    for (const world of this._worlds.values()) {
-      worlds.push(world.getInfo());
-    }
-    this._sendTo(ws, { type: 'worldList', worlds });
+    this._sendTo(ws, { type: 'worldList', worlds: this.getWorldList() });
   }
 
   /**
@@ -110,9 +166,13 @@ export class WorldManager {
     let world = this._worlds.get(cleanWorldId);
     if (!world) {
       console.log(`[server] Creating new world: "${cleanWorldId}"`);
+
+      // Ensure the world row exists in the database (idempotent)
+      this._db.ensureWorld(cleanWorldId, cleanWorldId);
+
       world = new GameWorld(cleanWorldId, cleanWorldId, (id) => {
         this._worlds.delete(id);
-      });
+      }, this._db);
       this._worlds.set(cleanWorldId, world);
     }
 
@@ -188,6 +248,22 @@ export class WorldManager {
       if (msg.text && typeof msg.text === 'string' && msg.text.trim()) {
         world.broadcastChat(player, msg.text.trim().slice(0, 200)); // Max 200 chars
       }
+    }
+  }
+
+  /**
+   * Gracefully shut down all worlds and close the database.
+   * Called during server shutdown.
+   */
+  close() {
+    for (const world of this._worlds.values()) {
+      world.destroy();
+    }
+    this._worlds.clear();
+    this._connections.clear();
+    if (this._db) {
+      this._db.close();
+      this._db = null;
     }
   }
 
