@@ -1,6 +1,6 @@
 import { VoxelRaycaster } from '../world/VoxelRaycaster.js';
-import { CharacterController } from './CharacterController.js';
 import { MAX_RAY_DISTANCE, GROUND_SIZE } from '../../shared/constants.js';
+import { checkPlayerBlockOverlap, doesBlockOverlapAnyPlayer } from '../../shared/physics.js';
 
 /**
  * Handles mouse/touch interaction for placing and removing cubes.
@@ -30,6 +30,14 @@ export class InteractionManager {
     this._lego = legoCharacter;
     this._colorPicker = colorPicker;
     this._networkClient = networkClient || null;
+
+    /**
+     * Remote player positions for overlap checks.
+     * Prevents client-side optimistic placement in cells occupied by remote players,
+     * which avoids the "block flash" when the server rejects it.
+     * @type {Array<{id:string, posX:number, posY:number, posZ:number}>}
+     */
+    this._remotePlayerPositions = [];
 
     this._pointerMoved = false;
     this._downPos = { x: 0, y: 0 };
@@ -87,7 +95,7 @@ export class InteractionManager {
 
       // Left button — place cube
       if (hit) {
-        if (!this._isCharacterAt(hit.placeX, hit.placeY, hit.placeZ)) {
+        if (this._canPlaceBlock(hit.placeX, hit.placeY, hit.placeZ)) {
           this._placeCube(hit.placeX, hit.placeY, hit.placeZ);
         }
         return;
@@ -95,7 +103,7 @@ export class InteractionManager {
 
       // No cube hit — try ground
       const cell = VoxelRaycaster.pickGround(origin, direction, GROUND_SIZE, MAX_RAY_DISTANCE);
-      if (cell && !this._isCharacterAt(cell.x, 0.5, cell.z)) {
+      if (cell && this._canPlaceBlock(cell.x, 0.5, cell.z)) {
         this._placeCube(cell.x, 0.5, cell.z);
       }
     };
@@ -149,23 +157,38 @@ export class InteractionManager {
     return this._ctrlGUI.currentName === 'FPS' || this._ctrlGUI.currentName === 'Follow';
   }
 
-  _isCharacterAt(worldX, worldY, worldZ) {
+  /**
+   * Set remote player positions for overlap checking.
+   * Called each frame from main.js to keep the data fresh for pointer events.
+   * @param {Array<{id:string, posX:number, posY:number, posZ:number}>} positions
+   */
+  setRemotePlayerPositions(positions) {
+    this._remotePlayerPositions = positions || [];
+  }
+
+  /**
+   * Check whether a block can be placed at (worldX, worldY, worldZ).
+   * Returns false if the block would overlap ANY player (local or remote),
+   * so the placement is rejected instead of pushing players around.
+   */
+  _canPlaceBlock(worldX, worldY, worldZ) {
+    const bx = Math.floor(worldX);
+    const by = Math.floor(worldY);
+    const bz = Math.floor(worldZ);
+
+    // Check local player
     const pos = this._lego.group.position;
-    const { CHAR_HALF_X, CHAR_HALF_Z, CHAR_HEIGHT } = CharacterController;
+    if (checkPlayerBlockOverlap({ x: pos.x, y: pos.y, z: pos.z }, bx, by, bz)) {
+      return false;
+    }
 
-    const cx = Math.floor(worldX);
-    const cz = Math.floor(worldZ);
-    const cy = Math.floor(worldY);
+    // Check remote players — prevents "block flash" from server rejection
+    if (this._remotePlayerPositions.length > 0 &&
+        doesBlockOverlapAnyPlayer(worldX, worldY, worldZ, this._remotePlayerPositions)) {
+      return false;
+    }
 
-    const charMinX = pos.x - CHAR_HALF_X, charMaxX = pos.x + CHAR_HALF_X;
-    const charMinY = pos.y, charMaxY = pos.y + CHAR_HEIGHT;
-    const charMinZ = pos.z - CHAR_HALF_Z, charMaxZ = pos.z + CHAR_HALF_Z;
-
-    return (
-      cx < charMaxX && cx + 1 > charMinX &&
-      cy < charMaxY && cy + 1 > charMinY &&
-      cz < charMaxZ && cz + 1 > charMinZ
-    );
+    return true;
   }
 
   dispose() {

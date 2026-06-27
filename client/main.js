@@ -591,6 +591,9 @@ function animate(time) {
   if (isMultiplayer || interactionManager) {
     const remotePositions = remotePlayerManager ? remotePlayerManager.getAllPositions() : [];
     characterController.update(delta, remotePositions);
+    if (interactionManager) {
+      interactionManager.setRemotePlayerPositions(remotePositions);
+    }
   }
 
   // --- Player-player collision (client-side prediction) ---
