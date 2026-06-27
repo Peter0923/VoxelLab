@@ -179,6 +179,6 @@ scripts/        — CLI utilities (terrain generation)
 
 ## Development
 
-- **Tests**: Run `npx playwright test` for end-to-end browser tests.
+- **Tests**: Run `node test/test-multiplayer.mjs` for end-to-end browser tests.
 - **Linting**: No linter is currently configured.
 - **Hot Reload**: Vite provides instant HMR for client code changes. The game server must be restarted manually for server-side changes.

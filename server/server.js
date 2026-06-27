@@ -22,7 +22,7 @@ const PORT = parseInt(process.env.PORT || '3001', 10);
 const httpServer = createServer((req, res) => {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
@@ -33,12 +33,23 @@ const httpServer = createServer((req, res) => {
 
   // REST endpoint: get world list (also available via WebSocket DISCOVER)
   if (req.method === 'GET' && req.url === '/api/worlds') {
-    const worldList = [];
-    for (const world of worldManager._worlds.values()) {
-      worldList.push(world.getInfo());
-    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ type: WORLD_LIST, worlds: worldList }));
+    res.end(JSON.stringify({ type: WORLD_LIST, worlds: worldManager.getWorldList() }));
+    return;
+  }
+
+  // REST endpoint: delete a world
+  if (req.method === 'DELETE' && req.url.startsWith('/api/worlds/')) {
+    const worldId = decodeURIComponent(req.url.slice('/api/worlds/'.length));
+    if (!worldId) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'World ID is required' }));
+      return;
+    }
+    console.log(`[server] Deleting world "${worldId}" via REST API`);
+    worldManager.deleteWorld(worldId);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 
@@ -80,3 +91,32 @@ httpServer.listen(PORT, () => {
   console.log('╚══════════════════════════════════════════╝');
   console.log('');
 });
+
+// --- Graceful shutdown ---
+
+function gracefulShutdown(signal) {
+  console.log(`\n[server] Received ${signal}. Shutting down gracefully...`);
+
+  // Close WebSocket server first to stop accepting new connections
+  wss.close(() => {
+    console.log('[server] WebSocket server closed.');
+
+    // Destroy all worlds and close the database
+    worldManager.close();
+
+    // Close HTTP server
+    httpServer.close(() => {
+      console.log('[server] HTTP server closed. Goodbye.');
+      process.exit(0);
+    });
+  });
+
+  // Force exit after 5 seconds if graceful shutdown hangs
+  setTimeout(() => {
+    console.error('[server] Forced shutdown after timeout.');
+    process.exit(1);
+  }, 5000).unref();
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

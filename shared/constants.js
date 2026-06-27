@@ -20,7 +20,7 @@ export const GROUND_SIZE = 50;
 // --- Networking ---
 export const TICK_RATE = 20;                    // Server tick rate (Hz)
 export const TICK_INTERVAL_MS = 1000 / TICK_RATE; // 50ms
-export const MAX_PLAYERS = 50;                  // Max players per world
+export const MAX_PLAYERS = 10;                  // Max players per world
 
 // --- World lifecycle ---
 export const WORLD_DESTROY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
