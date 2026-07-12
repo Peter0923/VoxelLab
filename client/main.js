@@ -142,11 +142,13 @@ let isMultiplayer = false;
 // ============================================================
 // GUI setup
 // ============================================================
+controllerGUI.setupCameraController(lego, scene);
 controllerGUI.setupSceneManager(cubeManager, characterController, lego, GROUND_SIZE);
-controllerGUI.setupCameraController(lego, scene, colorPicker);
+controllerGUI.setupAssetManager({ colorPicker });
 
 // Hide Scene Manager by default — only shown when user selects offline mode.
 // In online mode the server manages the world; at the menu no mode is active yet.
+// The Game Settings panel itself is hidden until the user enters a world.
 controllerGUI.showSceneManager(false);
 
 // ============================================================
@@ -167,6 +169,9 @@ document.body.appendChild(stats.dom);
  */
 function joinMultiplayerWorld(worldId, nickname) {
   isMultiplayer = true;
+
+  // Switch Asset Manager to online mode (Tool Box visible, Color Picker hidden)
+  controllerGUI.setOnlineMode();
 
   // Hide Scene Manager — the server manages the world in online mode
   controllerGUI.showSceneManager(false);
@@ -251,6 +256,9 @@ async function startOfflineMode() {
     worldMap, controllerGUI, lego, colorPicker
   );
 
+  // Switch Asset Manager to offline mode (Color Picker visible, Tool Box hidden)
+  controllerGUI.setOfflineMode();
+
   // Enter game
   enterGame('Offline', 1);
 }
@@ -262,6 +270,7 @@ function enterGame(worldName, playerCount) {
   uiManager.hideMainMenu();
   uiManager.showHUD();
   uiManager.updateHUD(worldName, playerCount);
+  controllerGUI.enterGame();
 }
 
 /**
@@ -269,6 +278,9 @@ function enterGame(worldName, playerCount) {
  */
 function returnToMenu() {
   isMultiplayer = false;
+
+  // Hide the Game Settings panel and disable hotkeys
+  controllerGUI.leaveGame();
 
   // Hide Scene Manager — back at menu, no mode selected yet
   controllerGUI.showSceneManager(false);
