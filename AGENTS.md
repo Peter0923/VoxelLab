@@ -13,6 +13,7 @@ A browser-based multiplayer voxel sandbox (Three.js + Node.js WebSocket). Player
 | `node test/test-multiplayer.mjs` | Integration test (headless) |
 | `node test/test-multiplayer.mjs --headed` | Integration test (visible browser) |
 | `node --check server/server.js` | Quick syntax check |
+| `node scripts/lost-temple.js [--seed N] [--name NAME]` | Generate an infected Protoss temple scene (output to `public/scenes/{name}.scene`) |
 
 No lint, format, typecheck, or codegen scripts exist.
 
@@ -28,6 +29,7 @@ shared/       Pure JS — no DOM, no Node, no Three.js (importable by both sides
   VoxelRaycaster.js  CPU Amanatides-Woo DDA
   messages.js    Message type constants + factory functions
 test/         Playwright integration test (standalone script, not a spec)
+scripts/      World/scene generation scripts (generate-terrain.js, lost-temple.js)
 docs/         Requirements, mechanics docs, how-to-run guide
 ```
 
