@@ -6,8 +6,9 @@ import { FPSController } from '../camera/FPSController.js';
 import { SceneArchive } from '../world/SceneArchive.js';
 
 /**
- * Manages camera controllers and provides a lil-gui panel to switch between them.
- * Press H to hide/show the GUI.
+ * Manages camera controllers and provides a lil-gui "Game Settings" panel.
+ * Press H to hide/show the GUI (only when in-world).
+ * Press E to toggle the Tool Box (only in online mode, placeholder).
  */
 export class ControllerGUI {
   /**
@@ -27,11 +28,14 @@ export class ControllerGUI {
     /** @type {string} */
     this.currentName = null;
 
-    // Build the lil-gui panel
+    // Build the lil-gui panel (hidden by default — shown only when in-world)
     this.gui = new GUI({ title: 'Game Settings' });
     this.gui.domElement.style.position = 'absolute';
     this.gui.domElement.style.top = '10px';
     this.gui.domElement.style.right = '10px';
+    this.gui.domElement.style.display = 'none';
+
+    this._hotkeyEnabled = false;
 
     // Register controllers
     this.register('Orbit', new OrbitController());
@@ -40,14 +44,6 @@ export class ControllerGUI {
 
     // Bounding box reference (initialized later in setupCameraController)
     this.boxHelper = null;
-
-    // Keyboard shortcut to hide/show GUI
-    document.addEventListener('keydown', (e) => {
-      if (e.code === 'KeyH' && !e.ctrlKey && !e.metaKey) {
-        this.gui.domElement.style.display =
-          this.gui.domElement.style.display === 'none' ? '' : 'none';
-      }
-    });
 
     // FPS limit setting (default to 60Hz to keep frame rate consistent)
     /** @type {'Max'|'60Hz'} */
@@ -62,6 +58,59 @@ export class ControllerGUI {
 
     // Disconnect button state (set by setupMultiplayerInfo)
     this._disconnectCallback = null;
+  }
+
+  /**
+   * Register keyboard shortcuts for H (toggle Game Settings) and E (toggle Tool Box).
+   * Only active when _hotkeyEnabled is true and chat is not focused.
+   */
+  _registerHotkeys() {
+    this._hotkeyHandler = (e) => {
+      if (!this._hotkeyEnabled) return;
+      // Ignore when chat input is focused
+      const chatInput = document.getElementById('chat-input');
+      if (chatInput && document.activeElement === chatInput) return;
+
+      if (e.code === 'KeyH' && !e.ctrlKey && !e.metaKey) {
+        this.gui.domElement.style.display =
+          this.gui.domElement.style.display === 'none' ? '' : 'none';
+        e.preventDefault();
+      }
+
+      if (e.code === 'KeyE' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        if (this._toolBoxControl && this._toolBoxDom) {
+          this._toolBoxState.enabled = !this._toolBoxState.enabled;
+          this._toolBoxControl.updateDisplay();
+        }
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('keydown', this._hotkeyHandler);
+  }
+
+  _unregisterHotkeys() {
+    if (this._hotkeyHandler) {
+      document.removeEventListener('keydown', this._hotkeyHandler);
+      this._hotkeyHandler = null;
+    }
+  }
+
+  /**
+   * Show the GUI panel and enable hotkeys. Called when entering a world.
+   */
+  enterGame() {
+    this.gui.domElement.style.display = '';
+    this._hotkeyEnabled = true;
+    this._registerHotkeys();
+  }
+
+  /**
+   * Hide the GUI panel and disable hotkeys. Called when leaving a world.
+   */
+  leaveGame() {
+    this.gui.domElement.style.display = 'none';
+    this._hotkeyEnabled = false;
+    this._unregisterHotkeys();
   }
 
   /**
@@ -206,39 +255,84 @@ export class ControllerGUI {
   }
 
   /**
-   * Set up the camera controller dropdown and bounding box toggle in a
-   * "Camera Controller" subfolder of the GUI panel.
-   * This should be called after setupSceneManager if you want Scene Manager
-   * to appear first in the panel.
+   * Set up the camera controller dropdown directly in the root of the GUI panel.
+   * Called after the constructor's FPS Limit controller so it appears next in order.
    * @param {import('./LegoCharacter.js').LegoCharacter} character
    * @param {import('three').Scene} scene
-   * @param {import('./ColorPicker.js').ColorPicker} [colorPicker]
    */
-  setupCameraController(character, scene, colorPicker) {
-    const folder = this.gui.addFolder('Camera Controller');
-
-    // Controller dropdown
+  setupCameraController(character, scene) {
     const state = { controller: 'Orbit' };
-
-    folder.add(state, 'controller', Object.keys(this.controllers))
-      .name('Controller')
+    this.gui.add(state, 'controller', Object.keys(this.controllers))
+      .name('Camera')
       .onChange((name) => this._switchTo(name));
+  }
 
-    // Color Picker toggle
-    if (colorPicker) {
+  /**
+   * Set up the "Asset Manager" folder in the GUI panel.
+   * Contains Color Picker (offline mode) and Tool Box (online mode, placeholder).
+   * Both controls are hidden by default — call setOfflineMode() or setOnlineMode()
+   * to show the appropriate one.
+   * Should be called after setupCameraController so it appears after it in order.
+   * @param {object} opts
+   * @param {import('./ColorPicker.js').ColorPicker} [opts.colorPicker]
+   */
+  setupAssetManager(opts) {
+    const folder = this.gui.addFolder('Asset Manager');
+
+    // Color Picker toggle (offline mode)
+    if (opts.colorPicker) {
       const pickerState = { enabled: false };
-      folder.add(pickerState, 'enabled')
+      this._pickerControl = folder.add(pickerState, 'enabled')
         .name('Color Picker')
         .onChange((val) => {
-          if (val) colorPicker.show();
-          else colorPicker.hide();
+          if (val) opts.colorPicker.show();
+          else opts.colorPicker.hide();
         });
+      this._pickerState = pickerState;
+      this._pickerDom = this._pickerControl.domElement;
+      this._pickerDom.style.display = 'none';
     }
 
-    // Bounding box toggle
-    // if (character && scene) {
-    //   this._setupBoundingBoxToggle(character, scene, folder);
-    // }
+    // Tool Box toggle (online mode, placeholder)
+    this._toolBoxState = { enabled: false };
+    this._toolBoxControl = folder.add(this._toolBoxState, 'enabled')
+      .name('Tool Box')
+      .onChange((val) => {
+        // Placeholder — no visual output yet
+      });
+    this._toolBoxDom = this._toolBoxControl.domElement;
+    this._toolBoxDom.style.display = 'none';
+  }
+
+  /**
+   * Switch Asset Manager to offline mode: show Color Picker, hide Tool Box.
+   * Also called when entering a world in offline mode.
+   */
+  setOfflineMode() {
+    if (this._pickerDom) {
+      this._pickerDom.style.display = '';
+    }
+    if (this._toolBoxDom) {
+      this._toolBoxDom.style.display = 'none';
+    }
+  }
+
+  /**
+   * Switch Asset Manager to online mode: show Tool Box, hide Color Picker.
+   * Also called when entering a world in multiplayer mode.
+   */
+  setOnlineMode() {
+    if (this._pickerDom) {
+      this._pickerDom.style.display = 'none';
+      // Auto-hide the color picker palette when switching to online
+      if (this._pickerState && this._pickerState.enabled) {
+        this._pickerState.enabled = false;
+        this._pickerControl.updateDisplay();
+      }
+    }
+    if (this._toolBoxDom) {
+      this._toolBoxDom.style.display = '';
+    }
   }
 
   /**
